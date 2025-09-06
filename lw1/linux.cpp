@@ -8,39 +8,55 @@
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
 
-
 const int BITES_IN_KB = 1024;
 
-std::string GetPrettyName();
-long GetVmallocTotal();
+void PrintKernelInfo();
+void PrintOSName();
+void PrintVirtualMemoryInfo();
 void PrintDriversInfo();
+void PrintUserInfo();
 
 void PrintRamInfo(struct sysinfo &info);
 
 int main()
 {
-    struct utsname buf;
-    struct sysinfo info;
-
-    char hostname[256];
-    std::string prettyName = GetPrettyName();
-    std::cout << "OS: " << prettyName << std::endl;
-
-    if (uname(&buf) == 0)
+    try
     {
-        std::cout << "Ядро: " << buf.release << std::endl;
+        struct sysinfo info;
+
+        if (sysinfo(&info) != 0)
+        {
+            std::cerr << "Can not read sysinfo" << std::endl;
+        }
+
+        PrintOSName();
+        PrintKernelInfo();
+        PrintRamInfo(info);
+
+        std::cout << "Количество процессоров: " << get_nprocs() << std::endl;
+
+        std::cout << std::fixed << std::setprecision(2);
+        std::cout << "Загрузка процессора: "
+                  << info.loads[0] / 65536.0 << ' '
+                  << info.loads[1] / 65536.0 << ' '
+                  << info.loads[2] / 65536.0 << ' '
+                  << std::endl;
+
+        PrintVirtualMemoryInfo();
+
+        PrintUserInfo();
+        PrintDriversInfo();
     }
-    PrintRamInfo(info); // TODO все по нулям почему-то
+    catch (const std::exception& exception)
+    {
+        std::cout << exception.what() << std::endl;
+        return 1;
+    }
+}
 
-    std::cout << "Количество процессоров: " << get_nprocs() << std::endl;
-    std::cout << "Архитектура процессора: " << buf.machine << std::endl;
-
-    std::cout << std::fixed << std::setprecision(2);
-    std::cout << "Загрузка процессора: "
-        << info.loads[0] / 65536.0 << ' '
-        << info.loads[1] / 65536.0 << ' '
-        << info.loads[2] / 65536.0 << ' '
-        << std::endl;
+void PrintUserInfo()
+{
+    char hostname[256];
 
     std::cout << "Пользователь: " << getlogin() << std::endl;
 
@@ -48,14 +64,17 @@ int main()
     {
         std::cout << "Хост: " << hostname << std::endl;
     }
+}
 
-    auto vmallocTotal = GetVmallocTotal();
-    if (vmallocTotal != -1)
+void PrintKernelInfo()
+{
+    struct utsname buf;
+
+    if (uname(&buf) == 0)
     {
-        std::cout << "Виртуальная память: " << vmallocTotal << " kb" << std::endl;
+        std::cout << "Ядро: " << buf.release << std::endl;
+        std::cout << "Архитектура процессора: " << buf.machine << std::endl;
     }
-
-    PrintDriversInfo();
 }
 
 
@@ -68,45 +87,47 @@ void PrintRamInfo(struct sysinfo &info)
 
     if (sysinfo(&info) == 0)
     {
-        std::cout << "Свободной памяти: " << freeRam << std::endl;
-        std::cout << "Памяти всего: " << totalRam << std::endl;
+        std::cout << "Свободной памяти: " << freeRam << " mB" << std::endl;
+        std::cout << "Памяти всего: " << totalRam << " mB" << std::endl;
     }
 }
 
 
-long GetVmallocTotal()
+void PrintVirtualMemoryInfo()
 {
-    const char separator = ':';
-    const char space = ' ';
+    long totalMem = -1;
+    long totalSwap = -1;
 
     std::ifstream meminfo("/proc/meminfo");
     std::string line;
 
     while (std::getline(meminfo, line))
     {
-        if (line.find("VmallocTotal") == std::string::npos)
+        if (line.find("MemTotal:") == 0)
         {
-            continue;
+            totalMem = std::stol(line.substr(line.find_first_of("0123456789")));
         }
-        size_t pos = line.find(separator);
-        if (pos == std::string::npos)
+        else if (line.find("SwapTotal:") == 0)
         {
-            continue;
+            totalSwap = std::stol(line.substr(line.find_first_of("0123456789")));
         }
-        std::string valueStr = line.substr(pos + 1);
 
-        valueStr = valueStr.substr(0, valueStr.find("kB"));
-
-        valueStr.erase(0, valueStr.find_first_not_of(space));
-        valueStr.erase(valueStr.find_last_not_of(space) + 1);
-
-        return std::stol(valueStr) * BITES_IN_KB;
+        if (totalMem != -1 && totalSwap != -1)
+        {
+            break;
+        }
     }
 
-    return -1;
+    if (totalMem == -1 || totalSwap == -1)
+    {
+        std::cerr << "Error: Failed to find MemTotal or SwapTotal in /proc/meminfo" << std::endl;
+    }
+
+    long totalVirtualMemoryMb = (totalMem + totalSwap) / BITES_IN_KB;
+    std::cout << "Виртуальная память: " << totalVirtualMemoryMb << " mB" << std::endl;
 }
 
-std::string GetPrettyName()
+void PrintOSName()
 {
     const char quote = '"';
     const std::string osReleaseFileName = "/etc/os-release";
@@ -118,6 +139,7 @@ std::string GetPrettyName()
         throw std::runtime_error("Failed to open /etc/os-release");
     }
 
+    std::string osName;
     std::string line;
     while (std::getline(osRelease, line))
     {
@@ -128,13 +150,14 @@ std::string GetPrettyName()
         size_t startQuote = line.find(quote);
         size_t endQuote = line.rfind(quote);
 
-        return line.substr(
+        osName = line.substr(
             startQuote + 1,
             endQuote - startQuote - 1
         );
+        break;
     }
 
-    throw std::runtime_error("PRETTY_NAME not found in /etc/os-release");
+    std::cout << "OS: " << osName << std::endl;
 }
 
 void PrintDriversInfo()
@@ -158,8 +181,8 @@ void PrintDriversInfo()
 
         if (statvfs(entry->mnt_dir, &vfs) != 0)
         {
-            std::cerr << "Ошибка statvfs" << std::endl;
-            return;
+            std::cout << "Cannot get stats for drive" << entry->mnt_dir << std::endl;
+            continue;
         }
 
         unsigned long long totalBytes = static_cast<unsigned long long>(vfs.f_blocks) * static_cast<unsigned long long>(vfs.f_frsize);
