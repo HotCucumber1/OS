@@ -1,4 +1,7 @@
 #!/bin/bash
+# TODO что это сверху
+
+set -e
 
 tar -czf proj.tar.gz proj
 
@@ -31,3 +34,7 @@ mv proj/*.cpp proj/src/
 g++ -I./proj/include proj/src/lib.cpp proj/src/main.cpp -o proj/build/app
 
 echo "10 20" | ./proj/build/app > stdout.txt
+
+# TODO выянсить, зачем ./ в своих командах
+# TODO выянсить, почему докер сразу запускается
+# TODO выяснить, зачем -I./

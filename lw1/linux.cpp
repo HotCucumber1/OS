@@ -2,13 +2,14 @@
 #include <string>
 #include <fstream>
 #include <iomanip>
+#include <climits>
 #include <mntent.h>
 #include <unistd.h>
 #include <sys/utsname.h>
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
 
-const int BITES_IN_KB = 1024;
+const int BYTES_IN_KB = 1024;
 
 void PrintKernelInfo();
 void PrintOSName();
@@ -22,6 +23,7 @@ int main()
 {
     try
     {
+        const double loadScale = 65536;
         struct sysinfo info;
 
         if (sysinfo(&info) != 0)
@@ -29,23 +31,22 @@ int main()
             std::cerr << "Can not read sysinfo" << std::endl;
         }
 
+        std::cout << std::fixed << std::setprecision(2);
+        PrintDriversInfo();
         PrintOSName();
         PrintKernelInfo();
         PrintRamInfo(info);
 
         std::cout << "Количество процессоров: " << get_nprocs() << std::endl;
 
-        std::cout << std::fixed << std::setprecision(2);
         std::cout << "Загрузка процессора: "
-                  << info.loads[0] / 65536.0 << ' '
-                  << info.loads[1] / 65536.0 << ' '
-                  << info.loads[2] / 65536.0 << ' '
+                  << info.loads[0] / loadScale << ' '
+                  << info.loads[1] / loadScale << ' '
+                  << info.loads[2] / loadScale << ' '
                   << std::endl;
 
         PrintVirtualMemoryInfo();
-
         PrintUserInfo();
-        PrintDriversInfo();
     }
     catch (const std::exception& exception)
     {
@@ -56,16 +57,16 @@ int main()
 
 void PrintUserInfo()
 {
-    char hostname[256];
+    char hostname[HOST_NAME_MAX];
 
     std::cout << "Пользователь: " << getlogin() << std::endl;
-
-    if (gethostname(hostname, sizeof(std::string) - 1) == 0)
+    if (gethostname(hostname, HOST_NAME_MAX) == 0)
     {
         std::cout << "Хост: " << hostname << std::endl;
     }
 }
 
+// TODO обработку ошибок добавить
 void PrintKernelInfo()
 {
     struct utsname buf;
@@ -98,6 +99,7 @@ void PrintVirtualMemoryInfo()
     long totalMem = -1;
     long totalSwap = -1;
 
+    // TODO: узнать, что будет, если читать файл, когда его меняют
     std::ifstream meminfo("/proc/meminfo");
     std::string line;
 
@@ -120,10 +122,10 @@ void PrintVirtualMemoryInfo()
 
     if (totalMem == -1 || totalSwap == -1)
     {
-        std::cerr << "Error: Failed to find MemTotal or SwapTotal in /proc/meminfo" << std::endl;
+        std::cerr << "Can not find `MemTotal` and `SwapTotal` in /proc/meminfo" << std::endl;
     }
 
-    long totalVirtualMemoryMb = (totalMem + totalSwap) / BITES_IN_KB;
+    long totalVirtualMemoryMb = (totalSwap) / BYTES_IN_KB;
     std::cout << "Виртуальная память: " << totalVirtualMemoryMb << " mB" << std::endl;
 }
 
@@ -162,16 +164,13 @@ void PrintOSName()
 
 void PrintDriversInfo()
 {
-    const char* driversFile = "/proc/mounts";
-
-    FILE* file = setmntent(driversFile, "r");
+    FILE* file = setmntent("/proc/mounts", "r");
 
     if (file == nullptr)
     {
         return;
     }
 
-    std::cout << "========================" << std::endl;
     std::cout << "Drivers: " << std::endl;
 
     struct mntent* entry;
@@ -185,11 +184,11 @@ void PrintDriversInfo()
             continue;
         }
 
-        unsigned long long totalBytes = static_cast<unsigned long long>(vfs.f_blocks) * static_cast<unsigned long long>(vfs.f_frsize);
-        unsigned long long freeBytes = static_cast<unsigned long long>(vfs.f_bfree) * static_cast<unsigned long long>(vfs.f_frsize);
+        unsigned long totalBytes = static_cast<unsigned long>(vfs.f_blocks) * static_cast<unsigned long>(vfs.f_frsize);
+        unsigned long freeBytes = static_cast<unsigned long>(vfs.f_bfree) * static_cast<unsigned long>(vfs.f_frsize);
 
-        double totalGb = totalBytes / (BITES_IN_KB * BITES_IN_KB * BITES_IN_KB);
-        double freeGb = freeBytes / (BITES_IN_KB * BITES_IN_KB * BITES_IN_KB);
+        double totalGb = totalBytes / (BYTES_IN_KB * BYTES_IN_KB * BYTES_IN_KB);
+        double freeGb = freeBytes / (BYTES_IN_KB * BYTES_IN_KB * BYTES_IN_KB);
 
         std::cout << entry->mnt_dir << '\t'
                   << freeGb << "gB free / "
@@ -198,4 +197,5 @@ void PrintDriversInfo()
     }
 
     endmntent(file);
+    std::cout << "========================" << std::endl;
 }

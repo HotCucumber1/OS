@@ -2,7 +2,7 @@
 
 set -e
 
-if test -e out
+if test -e out # TODO почему без [ ] (потому что [ ] это и есть test)
 then
     rm -rf out
 fi
@@ -14,11 +14,13 @@ whoami > me.txt
 
 cp me.txt metoo.txt
 
-man wc > wchelp.txt
+man wc > wchelp.txt # TODO почему man и cat
 cat wchelp.txt
 
+# TODO почему wc и -f1
 wc -l wchelp.txt | cut -d' ' -f1 > wchelp-lines.txt
 
+# TODO почему tac
 tac wchelp.txt > wchelp-reversed.txt
 
 cat wchelp.txt wchelp-reversed.txt me.txt metoo.txt wchelp-lines.txt > all.txt
@@ -33,4 +35,4 @@ then
 fi
 mv out/result.tar.gz ./result.tar.gz
 
-rm -rf out/ # TODO точно?
+rm -rf out/
