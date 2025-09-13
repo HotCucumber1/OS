@@ -66,16 +66,16 @@ void PrintUserInfo()
     }
 }
 
-// TODO обработку ошибок добавить
 void PrintKernelInfo()
 {
     struct utsname buf;
 
-    if (uname(&buf) == 0)
+    if (uname(&buf) != 0)
     {
-        std::cout << "Ядро: " << buf.release << std::endl;
-        std::cout << "Архитектура процессора: " << buf.machine << std::endl;
+    	throw std::runtime_error("Failed to get core info");
     }
+    std::cout << "Ядро: " << buf.release << std::endl;
+    std::cout << "Архитектура процессора: " << buf.machine << std::endl;
 }
 
 
@@ -86,11 +86,12 @@ void PrintRamInfo(struct sysinfo &info)
     auto totalRam = info.totalram * info.mem_unit / BITES_IN_MB;
     auto freeRam = info.freeram * info.mem_unit / BITES_IN_MB;
 
-    if (sysinfo(&info) == 0)
+    if (sysinfo(&info) != 0)
     {
-        std::cout << "Свободной памяти: " << freeRam << " mB" << std::endl;
-        std::cout << "Памяти всего: " << totalRam << " mB" << std::endl;
+        throw std::runtime_error("Failed to get core info");
     }
+	std::cout << "Свободной памяти: " << freeRam << " mB" << std::endl;
+	std::cout << "Памяти всего: " << totalRam << " mB" << std::endl;
 }
 
 
@@ -99,7 +100,6 @@ void PrintVirtualMemoryInfo()
     long totalMem = -1;
     long totalSwap = -1;
 
-    // TODO: узнать, что будет, если читать файл, когда его меняют
     std::ifstream meminfo("/proc/meminfo");
     std::string line;
 

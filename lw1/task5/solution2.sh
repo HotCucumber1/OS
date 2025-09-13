@@ -2,7 +2,7 @@
 
 set -e
 
-if test -e out # TODO почему без [ ] (потому что [ ] это и есть test)
+if test -e out
 then
     rm -rf out
 fi
@@ -14,13 +14,11 @@ whoami > me.txt
 
 cp me.txt metoo.txt
 
-man wc > wchelp.txt # TODO почему man и cat
+man wc > wchelp.txt
 cat wchelp.txt
 
-# TODO почему wc и -f1
 wc -l wchelp.txt | cut -d' ' -f1 > wchelp-lines.txt
 
-# TODO почему tac
 tac wchelp.txt > wchelp-reversed.txt
 
 cat wchelp.txt wchelp-reversed.txt me.txt metoo.txt wchelp-lines.txt > all.txt

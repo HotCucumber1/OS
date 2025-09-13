@@ -4,9 +4,8 @@
 #include <iostream>
 #include <windows.h>
 #include <lmcons.h>
+#include <psapi.h>
 #include <VersionHelpers.h>
-
-#pragma comment(lib, "secur32.lib")
 
 constexpr int BYTES_IN_KB = 1024;
 
@@ -20,6 +19,8 @@ void PrintDrivesInfo();
 
 int main()
 {
+	setlocale(LC_ALL,"Russian");
+
 	try
 	{
 		PrintWindowsVersion();
@@ -35,7 +36,6 @@ int main()
 		return 1;
 	}
 }
-
 
 std::string GetWindowsVersion()
 {
@@ -66,17 +66,16 @@ std::string GetWindowsVersion()
     return "Undefined Windows version";
 }
 
-void PrintMemoryInfo(
-	const unsigned long long availableMemory,
+void PrintMemorySize(
+	const unsigned long long usedMemory,
 	const unsigned long long totalMemory,
 	const std::string& infoTitle)
 {
 	std::cout << std::fixed << std::setprecision(2);
 
-	std::cout << infoTitle << ": " << availableMemory << "mb / " << totalMemory << "mb ("
-			<< static_cast<double>(availableMemory) / totalMemory * 100.0 << "%)" << std::endl;
+	std::cout << infoTitle << ": " << usedMemory << "mb / " << totalMemory << "mb ("
+			<< static_cast<double>(usedMemory) / totalMemory * 100.0 << "%)" << std::endl;
 }
-
 
 void PrintWindowsVersion()
 {
@@ -93,15 +92,21 @@ void PrintMemoryInfo()
 		const auto availablePhysMemory = statex.ullAvailPhys / (BYTES_IN_KB * BYTES_IN_KB);
 		const auto totalPhysMemory = statex.ullTotalPhys / (BYTES_IN_KB * BYTES_IN_KB);
 
-		const auto availableVirtualMemory = statex.ullAvailVirtual / (BYTES_IN_KB * BYTES_IN_KB);
-		const auto totalVirtualMemory = statex.ullTotalVirtual / (BYTES_IN_KB * BYTES_IN_KB);
+		PrintMemorySize(totalPhysMemory - availablePhysMemory, totalPhysMemory, "RAM");
+	}
 
-		const auto availablePageFile = statex.ullAvailPageFile / (BYTES_IN_KB * BYTES_IN_KB);
-		const auto totalPageFile = statex.ullTotalPageFile / (BYTES_IN_KB * BYTES_IN_KB);
+	PERFORMANCE_INFORMATION perfInfo;
+	perfInfo.cb = sizeof(perfInfo);
 
-		PrintMemoryInfo(availablePhysMemory, totalPhysMemory, "RAM");
-		PrintMemoryInfo(availableVirtualMemory, totalVirtualMemory, "Virtual memory");
-		PrintMemoryInfo(availablePageFile, totalPageFile, "Pagefile");
+	// TODO обработка ошибок
+	if (GetPerformanceInfo(&perfInfo, sizeof(PERFORMANCE_INFORMATION)))
+	{
+		// TODO разобраться
+		std::cout << "Total virtual memory: "
+			<< ((perfInfo.CommitLimit + perfInfo.PhysicalTotal) * perfInfo.PageSize / (BYTES_IN_KB * BYTES_IN_KB)) << " MB" << std::endl;
+
+		std::cout << "Pagefile: "
+			<< (perfInfo.CommitLimit * perfInfo.PageSize / (BYTES_IN_KB * BYTES_IN_KB)) << " MB" << std::endl;
 	}
 }
 
@@ -143,7 +148,7 @@ void PrintComputerName()
 
 	if (GetLastError() != ERROR_MORE_DATA)
 	{
-		throw new std::runtime_error("Failed to get computer name buffer size");
+		throw std::runtime_error("Failed to get computer name buffer size");
 	}
 
 	std::vector<char> buffer(bufferSize);
@@ -156,36 +161,59 @@ void PrintComputerName()
 void PrintUserName()
 {
 	wchar_t username[UNLEN + 1];
-	DWORD size = sizeof(username) / sizeof(wchar_t);
+	DWORD size = UNLEN + 1;
 
 	if (GetUserNameW(username, &size))
 	{
-		std::wcout << "User: " << username << std::endl;
+		std::wcout << L"User: " << username << std::endl;
 	}
 	else
 	{
-		throw new std::runtime_error("Failed to get user name");
+		throw std::runtime_error("Failed to get user name");
 	}
-
 }
 
 void PrintDrivesInfo()
 {
-	auto bufferSize = GetLogicalDriveStrings(0, nullptr);
-	std::vector<char> buffer(bufferSize);
+    DWORD bufferSize = GetLogicalDriveStrings(0, nullptr);
+    if (bufferSize == 0)
+    {
+        std::cout << "Error getting buffer: " << GetLastError() << std::endl;
+        return;
+    }
 
-	char* drive = buffer.data();
-	while (*drive != '\0')
-	{
-		auto driveTipe = GetDriveType(drive);
+    std::vector<char> buffer(bufferSize);
+    DWORD result = GetLogicalDriveStrings(bufferSize, buffer.data());
+    if (result == 0)
+    {
+        std::cout << "Error getting drives: " << GetLastError() << std::endl;
+        return;
+    }
 
-		ULARGE_INTEGER freeBytes, totalBytes, totalFreeBytes;
+	std::cout << "-----------------" << std::endl;
+	std::cout << "Drives" << std::endl;
+	std::cout << "-----------------" << std::endl;
 
-		if (GetDiskFreeSpaceEx(drive, &freeBytes, &totalBytes, &totalFreeBytes))
-		{
-			std::cout << "Drive " << drive << " (" << driveTipe << "): " << std::endl;
-			std::cout << (freeBytes.QuadPart / (BYTES_IN_KB * BYTES_IN_KB * BYTES_IN_KB)) << " GB /"
-					  << (totalBytes.QuadPart / (BYTES_IN_KB * BYTES_IN_KB * BYTES_IN_KB)) << " GB";
-		}
-	}
+    const char* drive = buffer.data();
+    while (*drive != '\0')
+    {
+        ULARGE_INTEGER freeBytes, totalBytes, totalFreeBytes;
+
+        if (GetDiskFreeSpaceEx(
+        	drive,
+        	&freeBytes,
+        	&totalBytes,
+        	&totalFreeBytes
+        ))
+        {
+            std::cout << drive << " Free: " << (freeBytes.QuadPart / (BYTES_IN_KB * BYTES_IN_KB * BYTES_IN_KB)) << " GB / "
+                      << "Total: " << (totalBytes.QuadPart / (BYTES_IN_KB * BYTES_IN_KB * BYTES_IN_KB)) << " GB"
+                      << std::endl;
+        }
+        else
+        {
+            std::cout << "Drive " << drive << " Error getting space info: " << GetLastError() << std::endl;
+        }
+        drive += strlen(drive) + 1;
+    }
 }
