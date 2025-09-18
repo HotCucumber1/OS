@@ -4,3 +4,4 @@ project(OS)
 set(CMAKE_CXX_STANDARD 20)
 
 add_subdirectory(lw1)
+add_subdirectory(lw2/Zombie)
