@@ -9,7 +9,7 @@
 #include <pwd.h>
 #include <unistd.h>
 
-const double KB_IN_MB = 1024.0;
+const double KB_IN_MB = 1024;
 const int PATH_SIZE = 256;
 
 struct DirDeleter

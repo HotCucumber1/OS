@@ -1,1 +1,1 @@
-add_executable(Zombie zombie.cpp)
+add_executable(Zombie Zombie.cpp)
