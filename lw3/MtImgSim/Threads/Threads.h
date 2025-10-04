@@ -6,7 +6,7 @@
 namespace Thread
 {
 std::vector<Img::ImgData> GetImagesInfo(
-	Img::Image& queryImg,
+	const Img::Image& queryImg,
 	const std::vector<std::filesystem::path>& images,
 	int threadsCount);
 } // namespace Thread

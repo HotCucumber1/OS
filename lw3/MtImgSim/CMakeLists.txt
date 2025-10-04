@@ -20,7 +20,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(cxxopts)
 include_directories(${cxxopts_SOURCE_DIR})
 
+find_package(Boost REQUIRED COMPONENTS thread)
+
 add_executable(MtImgSim Image/Img.cpp Threads/Threads.cpp main.cpp)
 
+target_include_directories(MtImgSim PRIVATE ${Boost_INCLUDE_DIRS})
+
 target_link_libraries(MtImgSim PRIVATE cxxopts)
+target_link_libraries(MtImgSim PRIVATE Boost::thread Threads::Threads m)
+
 target_compile_definitions(MtImgSim PRIVATE STB_IMAGE_IMPLEMENTATION)
