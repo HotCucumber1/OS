@@ -48,11 +48,13 @@ int main(int argc, char* argv[])
 		auto [hasPayload, selfPath, payloadInfo] = GetSelfFileInfo();
 		if (hasPayload)
 		{
+			std::cout << "It is a process with payload" << std::endl;
 			Extract(selfPath, argv, payloadInfo);
 		}
 		else
 		{
 			AssertArgumentCount(argc);
+			std::cout << "It is an origin process (without payload)" << std::endl;
 			const std::string inputExeFilename = argv[1];
 			const std::string outputSelfpackFilename = argv[2];
 			Pack(selfPath, inputExeFilename, outputSelfpackFilename);

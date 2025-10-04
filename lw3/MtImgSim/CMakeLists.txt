@@ -3,6 +3,11 @@ file(
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/input/
 )
 
+file(
+        COPY ${CMAKE_CURRENT_SOURCE_DIR}/garbage/
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/garbage/
+)
+
 include(FetchContent)
 FetchContent_Declare(
         stb

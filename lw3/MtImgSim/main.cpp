@@ -1,10 +1,10 @@
 #include "Image/Img.h"
 #include "Threads/Threads.h"
+
 #include <algorithm>
 #include <cxxopts.hpp>
 #include <filesystem>
 #include <iostream>
-#include <thread>
 #include <chrono>
 
 constexpr double NANO_IN_SECOND = 1000000000;

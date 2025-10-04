@@ -51,38 +51,11 @@ std::vector<Img::ImgData> Thread::GetImagesInfo(
 			const auto image = Img::GetImage(path.string());
 			auto mse = Img::GetMse(queryImg, image);
 
-			resMutex.lock();
+			const std::lock_guard lock(resMutex);
 			allResults.emplace_back(path.string(), mse);
-			resMutex.unlock();
 		});
 	}
 	threadPool.join();
-	// {
-	// 	std::vector<std::jthread> threads;
-	//
-	// 	const int chunkSize = images.size() / threadsCount;
-	// 	const int remaining = images.size() % threadsCount;
-	//
-	// 	auto imagesIt = images.begin();
-	//
-	// 	for (int i = 0; i < threadsCount; ++i)
-	// 	{
-	// 		const auto currChunkSize = chunkSize + (i < remaining ? 1 : 0);
-	// 		std::vector<std::filesystem::path> fileChunk;
-	//
-	// 		std::move(imagesIt, imagesIt + currChunkSize, std::back_inserter(fileChunk));
-	// 		imagesIt += currChunkSize;
-	//
-	// 		threads.emplace_back(
-	// 			ImageWorker,
-	// 			queryImg,
-	// 			std::move(fileChunk),
-	// 			std::ref(threadResults[i]));
-	//
-	// 	}
-	// }
-
-	// std::vector<Img::ImgData> allResults = ReduceResults(threadResults);
 	std::sort(allResults.begin(), allResults.end());
 	return allResults;
 }
