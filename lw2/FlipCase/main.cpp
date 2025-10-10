@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
 	{
 		AssertFilesAreSpecified(argc);
 		const auto files = ParseArgs(argc, argv);
-		FlipFiles(files);
+		FlipFiles(files); // TODO ограничивать количество процессов
 	}
 	catch (const std::invalid_argument& exception)
 	{

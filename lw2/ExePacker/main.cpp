@@ -2,6 +2,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -48,13 +49,13 @@ int main(int argc, char* argv[])
 		auto [hasPayload, selfPath, payloadInfo] = GetSelfFileInfo();
 		if (hasPayload)
 		{
-			std::cout << "It is a process with payload" << std::endl;
+			// std::cout << "It is a process with payload" << std::endl;
 			Extract(selfPath, argv, payloadInfo);
 		}
 		else
 		{
 			AssertArgumentCount(argc);
-			std::cout << "It is an origin process (without payload)" << std::endl;
+			// std::cout << "It is an origin process (without payload)" << std::endl;
 			const std::string inputExeFilename = argv[1];
 			const std::string outputSelfpackFilename = argv[2];
 			Pack(selfPath, inputExeFilename, outputSelfpackFilename);
@@ -165,6 +166,7 @@ void Extract(
 	const auto payloadData = GetPayloadData(selfPath, payloadInfo);
 	const auto extractedData = DataPacker::UnpackData(payloadData, payloadInfo.originSize);
 
+	// TODO RAII обертка
 	const auto descriptor = mkstemp(tempFile);
 	AssertTempFileCreated(descriptor);
 
@@ -183,6 +185,8 @@ void Extract(
 	ForkProcess(tempFile, argv);
 }
 
+// TODO rename
+// TODO вынести удаление в функцию создания файла
 void ForkProcess(char* tempFile, char* argv[])
 {
 	const auto pid = fork();

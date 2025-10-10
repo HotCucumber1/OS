@@ -53,6 +53,7 @@ std::vector<char> DataPacker::UnpackData(const std::vector<char>& compressedData
 
 	if (destLen != originalSize)
 	{
+		// TODO лучше throw
 		decompressedData.resize(destLen);
 		std::cout << "Decompressed size is not equal to " << originalSize << std::endl;
 	}

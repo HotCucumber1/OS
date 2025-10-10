@@ -13,3 +13,4 @@ add_subdirectory(lw2/FlipCase)
 add_subdirectory(lw2/ExePacker)
 
 add_subdirectory(lw3/MtImgSim)
+add_subdirectory(lw3/Thumbgen)
