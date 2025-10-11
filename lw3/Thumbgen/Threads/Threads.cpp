@@ -1,8 +1,6 @@
 #include "Threads.h"
+#include "../Image/Image.h"
 
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image.h>
 #include <stb_image_write.h>
 #include <stb_image_resize2.h>
 #include <iostream>
@@ -53,6 +51,15 @@ void ScaleImages(
 	std::cout << "Failure: " << failure << std::endl;
 }
 
+std::filesystem::path GetOutputPath(const std::string& inputPath, const std::string& outputDir)
+{
+	const std::filesystem::path inputFilePath(inputPath);
+	const std::filesystem::path outputFilePath = std::filesystem::path(outputDir) / inputFilePath.relative_path();
+
+	const std::string stem = outputFilePath.stem().string();
+	return outputFilePath.parent_path() / (stem + IMG_FILE_ADDITION);
+}
+
 bool ScaleImage(
 	const std::string& inputPath,
 	const std::string& outputDir,
@@ -62,24 +69,20 @@ bool ScaleImage(
 	int width;
 	int height;
 	int channels;
-	unsigned char* data = stbi_load(
+	const Image image(
 		inputPath.c_str(),
-		&width,
-		&height,
-		&channels,
+		width,
+		height,
+		channels,
 		RGB);
+	const auto data = image.GetData();
 
 	if (!data)
 	{
 		std::cerr << "Failed to load image: " << inputPath << std::endl;
 		return false;
 	}
-
-	const std::filesystem::path inputFilePath(inputPath);
-	std::filesystem::path outputFilePath = std::filesystem::path(outputDir) / inputFilePath.relative_path();
-
-	const std::string stem = outputFilePath.stem().string();
-	outputFilePath = outputFilePath.parent_path() / (stem + IMG_FILE_ADDITION);
+	const auto outputFilePath = GetOutputPath(inputPath, outputDir);
 
 	std::filesystem::create_directories(outputFilePath.parent_path());
 
@@ -92,7 +95,6 @@ bool ScaleImage(
 			RGB,
 			data,
 			0);
-		stbi_image_free(data);
 		return success;
 	}
 
@@ -108,8 +110,6 @@ bool ScaleImage(
 		dstHeight,
 		0,
 		STBIR_RGB);
-
-	stbi_image_free(data);
 
 	if (result == nullptr)
 	{

@@ -9,7 +9,7 @@ constexpr size_t BUFFER_SIZE = 64 * 1024;
 
 void FlipAsciiCase(std::vector<char>& buffer);
 std::string FlipFile(const std::string& filename);
-void FlipFiles(const std::vector<std::string>& filenames);
+void FlipFiles(const std::vector<std::string>& filenames, int maxProcesses = 100);
 std::vector<std::string> ParseArgs(int argc, char* argv[]);
 void AssertFilesAreSpecified(int argc);
 
@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
 	{
 		AssertFilesAreSpecified(argc);
 		const auto files = ParseArgs(argc, argv);
-		FlipFiles(files); // TODO ограничивать количество процессов
+		FlipFiles(files);
 	}
 	catch (const std::invalid_argument& exception)
 	{
@@ -91,51 +91,68 @@ std::string FlipFile(const std::string& filename)
 	return outputFilename;
 }
 
-void FlipFiles(const std::vector<std::string>& filenames)
+void FlipFiles(
+	const std::vector<std::string>& filenames,
+	const int maxProcesses)
 {
-	int childrenCreated = 0;
-	for (const auto& fileName : filenames)
+	if (maxProcesses <= 0)
 	{
-		const pid_t pid = fork();
-		if (pid < 0)
-		{
-			std::cerr << "Fork failed: " << std::strerror(errno) << std::endl;
-			throw std::runtime_error("Fork failed");
-		}
-
-		if (pid == 0)
-		{
-			std::cout << "Process " << getpid() << " is processing " << fileName << std::endl;
-			const auto outFilename = FlipFile(fileName);
-			std::cout << "Process " << getpid() << " has finished writing to " << outFilename << std::endl;
-			_exit(0);
-		}
-		++childrenCreated;
+		throw std::invalid_argument("maxProcesses must be positive");
 	}
 
-	int childrenKilled = 0;
-	while (childrenKilled < childrenCreated)
-	{
-		int status;
-		const auto childPid = waitpid(-1, &status, 0);
+	std::vector<pid_t> activeProcesses;
+	size_t currentIndex = 0;
 
-		if (childPid == -1)
+	while (currentIndex < filenames.size() || !activeProcesses.empty())
+	{
+		while (activeProcesses.size() < maxProcesses && currentIndex < filenames.size())
 		{
-			if (errno == EINTR)
+			const pid_t pid = fork();
+			if (pid < 0)
 			{
-				std::cout << "waitpid() was interrupted (EINTR)" << std::endl;
-				continue;
+				std::cerr << "Fork failed: " << std::strerror(errno) << std::endl;
+				throw std::runtime_error("Fork failed");
 			}
-			if (errno == ECHILD)
+
+			if (pid == 0)
 			{
-				std::cout << "Children ended" << std::endl;
+				std::cout << "Process " << getpid() << " is processing " << filenames[currentIndex] << std::endl;
+				const auto outFilename = FlipFile(filenames[currentIndex]);
+				std::cout << "Process " << getpid() << " has finished writing to " << outFilename << std::endl;
+				_exit(0);
+			}
+			activeProcesses.push_back(pid);
+			std::cout << "Started process " << pid << " for file " << filenames[currentIndex] << std::endl;
+			currentIndex++;
+		}
+
+		if (!activeProcesses.empty())
+		{
+			int status;
+			const auto childPid = waitpid(-1, &status, 0);
+
+			if (childPid == -1)
+			{
+				if (errno == EINTR)
+				{
+					std::cout << "waitpid() was interrupted (EINTR)" << std::endl;
+					continue;
+				}
+				if (errno == ECHILD)
+				{
+					std::cout << "No more children" << std::endl;
+					break;
+				}
+				std::cerr << "waitpid failed: " << std::strerror(errno) << std::endl;
 				break;
 			}
-			std::cerr << "waitpid failed: " << std::strerror(errno) << std::endl;
-			break;
+			auto it = std::ranges::find(activeProcesses, childPid);
+			if (it != activeProcesses.end())
+			{
+				activeProcesses.erase(it);
+				std::cout << "Child process " << childPid << " finished" << std::endl;
+			}
 		}
-		std::cout << "Child process " << childPid << " is over" << std::endl;
-		++childrenKilled;
 	}
 }
 

@@ -1,4 +1,6 @@
 #include "DataPacker.h"
+#include "TempFile.h"
+
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -40,7 +42,7 @@ std::vector<char> GetPayloadData(
 	const std::string& selfPath,
 	const PayloadInfo& payloadInfo);
 void AssertTempFileCreated(int fileDescriptor);
-void ForkProcess(char* tempFile, char* argv[]);
+void RunNewProcess(char* tempFile, char* argv[]);
 
 int main(int argc, char* argv[])
 {
@@ -167,32 +169,27 @@ void Extract(
 	const auto extractedData = DataPacker::UnpackData(payloadData, payloadInfo.originSize);
 
 	// TODO RAII обертка
-	const auto descriptor = mkstemp(tempFile);
+	const TempFile tempFileDoc(tempFile);
+	const auto descriptor = tempFileDoc.Get();
 	AssertTempFileCreated(descriptor);
 
 	auto bytesWritten = write(descriptor, extractedData.data(), extractedData.size());
 	if (bytesWritten != extractedData.size())
 	{
-		close(descriptor);
-		unlink(tempFile);
 		throw std::runtime_error("Failed to write to temp file");
 	}
 	if (fchmod(descriptor, S_IRWXU) != 0)
 	{
 		throw std::runtime_error("Failed to change temp file rights");
 	}
-	close(descriptor);
-	ForkProcess(tempFile, argv);
+	RunNewProcess(tempFile, argv);
 }
 
-// TODO rename
-// TODO вынести удаление в функцию создания файла
-void ForkProcess(char* tempFile, char* argv[])
+void RunNewProcess(char* tempFile, char* argv[])
 {
 	const auto pid = fork();
 	if (pid == -1)
 	{
-		unlink(tempFile);
 		throw std::runtime_error("Failed to fork");
 	}
 
@@ -210,7 +207,6 @@ void ForkProcess(char* tempFile, char* argv[])
 	{
 		std::cerr << "Waitpid failed" << std::endl;
 	}
-	unlink(tempFile);
 }
 
 std::vector<char> GetPayloadData(
