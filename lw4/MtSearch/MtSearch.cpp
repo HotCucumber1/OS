@@ -379,7 +379,7 @@ uint64_t MtSearch::GetFileIdByUrl(const std::string& fileUrl)
 	throw std::invalid_argument("File does not exist");
 }
 
-void MtSearch::RemoveFileFromIndex(const std::string& fileUrl) // TODO не работает
+void MtSearch::RemoveFileFromIndex(const std::string& fileUrl)
 {
 	std::unique_lock lock(m_indexMutex);
 
@@ -394,34 +394,22 @@ void MtSearch::RemoveFileFromIndex(const std::string& fileUrl) // TODO не ра
 	}
 	m_files.erase(docId);
 
-	std::vector<std::string> termsToRemove;
-	std::vector<std::pair<std::string, std::vector<DocInfo>*>> termsToProcess;
-	for (auto& [term, files] : m_invertIndex)
+	for (auto it = m_invertIndex.begin(); it != m_invertIndex.end();)
 	{
-		termsToProcess.emplace_back(term, &files);
-	}
+		auto& files = it->second;
 
-	boost::asio::thread_pool threadPool(m_threads);
-	std::mutex removeMutex;
-	for (auto& [term, filesPtr] : termsToProcess)
-	{
-		boost::asio::post(threadPool, [docId, term, filesPtr, &termsToRemove, &removeMutex]() {
-			std::erase_if(*filesPtr, [docId](const DocInfo& docInfo) {
-				return docInfo.docId == docId;
-			});
-
-			if (filesPtr->empty())
-			{
-				std::lock_guard removeLock(removeMutex);
-				termsToRemove.push_back(term);
-			}
+		std::erase_if(files, [docId](const DocInfo& docInfo) {
+			return docInfo.docId == docId;
 		});
-	}
-	threadPool.join();
 
-	for (const auto& term : termsToRemove)
-	{
-		m_invertIndex.erase(term);
+		if (files.empty())
+		{
+			it = m_invertIndex.erase(it);
+		}
+		else
+		{
+			++it;
+		}
 	}
 }
 

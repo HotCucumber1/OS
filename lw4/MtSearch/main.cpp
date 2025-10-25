@@ -7,8 +7,8 @@ int main()
 {
 	try
 	{
-		MtSearch controller(std::cin, std::cout, 16);
-		controller.Run();
+		MtSearch search(std::cin, std::cout, 16);
+		search.Run();
 	}
 	catch (const std::exception& e)
 	{
