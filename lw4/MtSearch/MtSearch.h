@@ -29,13 +29,13 @@ private:
 public:
 	explicit MtSearch(std::istream& input, std::ostream& output, int threads);
 	void Run();
+	void AddFileToIndex(const std::string& filePath);
+	void AddDirToIndex(const std::string& dirPath, bool recursively);
+	FileInfo FindMostRelevantDocIds(const std::vector<std::string>& words);
 
 private:
 	void ProcessLine(const std::string& line);
-	void AddFileToIndex(const std::string& filePath);
-	void AddDirToIndex(const std::string& dirPath, bool recursively);
 	void PrintFilesRelevantInfo(const FileInfo& filesRelevantInfo);
-	FileInfo FindMostRelevantDocIds(const std::vector<std::string>& words);
 	void ProcessFindBatch(const std::string& fileUrl);
 	void RemoveFileFromIndex(const std::string& fileUrl);
 	void RemoveDirFromIndex(const std::string& dirPath, bool recursively);
