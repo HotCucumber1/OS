@@ -5,7 +5,7 @@ file(
 
 find_package(Boost REQUIRED COMPONENTS thread)
 
-add_executable(MtSearch Controller/Controller.cpp main.cpp)
+add_executable(MtSearch MtSearch.cpp main.cpp)
 
 target_include_directories(MtSearch PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(MtSearch PRIVATE Boost::thread Threads::Threads m)

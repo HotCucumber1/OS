@@ -1,4 +1,4 @@
-#include "Controller.h"
+#include "MtSearch.h"
 
 #include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
@@ -31,14 +31,14 @@ std::vector<std::string> SplitBySpaces(const std::string& str)
 	return words;
 }
 
-Controller::Controller(std::istream& input, std::ostream& output, int threads)
+MtSearch::MtSearch(std::istream& input, std::ostream& output, const int threads)
 	: m_input(input)
 	, m_output(output)
 	, m_threads(threads)
 {
 }
 
-void Controller::Run()
+void MtSearch::Run()
 {
 	std::string line;
 	while (!m_input.eof())
@@ -52,7 +52,7 @@ void Controller::Run()
 	}
 }
 
-void Controller::ProcessLine(const std::string& line)
+void MtSearch::ProcessLine(const std::string& line)
 {
 	const std::string addFileCommand = "add_file";
 	const std::string addDirCommand = "add_dir";
@@ -123,7 +123,7 @@ void InsertWord(std::unordered_map<std::string, int>& words, const std::string& 
 {
 	std::string result = word;
 
-	std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) {
+	std::transform(result.begin(), result.end(), result.begin(), [](const unsigned char c) {
 		return std::tolower(c);
 	});
 
@@ -138,26 +138,11 @@ void InsertWord(std::unordered_map<std::string, int>& words, const std::string& 
 	}
 }
 
-void Controller::AddFileToIndex(const std::string& filePath)
+uint ReadWordsFromFile(std::ifstream& input, std::unordered_map<std::string, int>& wordsCountMap)
 {
-	std::ifstream file(filePath);
-
-	if (!file.is_open())
-	{
-		std::cerr << "Cannot open file: " << filePath << std::endl;
-		return;
-	}
-
-	auto docId = m_docIndex.fetch_add(1, std::memory_order_relaxed);
-	{
-		std::unique_lock lock(m_indexMutex);
-		m_files[docId] = filePath;
-	}
-	std::unordered_map<std::string, int> wordsCount;
-
 	std::string line;
 	uint totalWordCount = 0;
-	while (std::getline(file, line))
+	while (std::getline(input, line))
 	{
 		std::string currentWord;
 
@@ -173,16 +158,35 @@ void Controller::AddFileToIndex(const std::string& filePath)
 			{
 				continue;
 			}
-			InsertWord(wordsCount, currentWord);
+			InsertWord(wordsCountMap, currentWord);
 			++totalWordCount;
 			currentWord.clear();
 		}
 		if (!currentWord.empty())
 		{
-			InsertWord(wordsCount, currentWord);
+			InsertWord(wordsCountMap, currentWord);
 			++totalWordCount;
 		}
 	}
+	return totalWordCount;
+}
+
+void MtSearch::AddFileToIndex(const std::string& filePath)
+{
+	std::ifstream file(filePath);
+	if (!file.is_open())
+	{
+		std::cerr << "Cannot open file: " << filePath << std::endl;
+		return;
+	}
+
+	auto docId = m_docIndex.fetch_add(1, std::memory_order_relaxed);
+	{
+		std::unique_lock lock(m_indexMutex);
+		m_files[docId] = filePath;
+	}
+	std::unordered_map<std::string, int> wordsCount;
+	auto totalWordCount = ReadWordsFromFile(file, wordsCount);
 
 	InvertIndex localUpdates;
 	for (const auto& [word, count] : wordsCount)
@@ -197,15 +201,15 @@ void Controller::AddFileToIndex(const std::string& filePath)
 	for (auto& [word, docs] : localUpdates)
 	{
 		auto& targetList = m_invertIndex[word];
-		targetList.insert(targetList.end(),
+		targetList.insert(
+			targetList.end(),
 			std::make_move_iterator(docs.begin()),
 			std::make_move_iterator(docs.end()));
 	}
 }
 
-void Controller::AddDirToIndex(const std::string& dirPath, const bool recursively)
+void MtSearch::AddDirToIndex(const std::string& dirPath, const bool recursively)
 {
-
 	MtProcessDirectory(
 		dirPath,
 		[this](const std::string& filePath) {
@@ -214,35 +218,34 @@ void Controller::AddDirToIndex(const std::string& dirPath, const bool recursivel
 		recursively);
 }
 
-std::vector<std::pair<uint64_t, double>> Controller::FindMostRelevantDocIds(const std::vector<std::string>& words)
+std::vector<MtSearch::WordData> MtSearch::GetWordsDataFromIndex(const std::vector<std::string>& words)
 {
-	struct WordData
-	{
-		double idf;
-		std::vector<DocInfo> docs;
-	};
 	std::vector<WordData> wordDataList;
 
+	std::shared_lock readLock(m_indexMutex);
+	const auto totalDocsCount = m_files.size();
+
+	for (const auto& word : words)
 	{
-		std::shared_lock readLock(m_indexMutex);
-		const auto totalDocsCount = m_files.size();
+		std::string result = word;
 
-		for (const auto& word : words)
+		std::transform(result.begin(), result.end(), result.begin(), [](const unsigned char c) {
+			return std::tolower(c);
+		});
+
+		if (auto it = m_invertIndex.find(result); it != m_invertIndex.end())
 		{
-			std::string result = word;
-
-			std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) {
-				return std::tolower(c);
-			});
-
-			if (auto it = m_invertIndex.find(result); it != m_invertIndex.end())
-			{
-				const auto docsWithTermCount = it->second.size();
-				double idf = std::log(static_cast<double>(totalDocsCount) / docsWithTermCount);
-				wordDataList.push_back({ idf, it->second });
-			}
+			const auto docsWithTermCount = it->second.size();
+			wordDataList.push_back({ std::log(static_cast<double>(totalDocsCount) / docsWithTermCount),
+				it->second });
 		}
 	}
+	return wordDataList;
+}
+
+std::vector<std::pair<uint64_t, double>> MtSearch::FindMostRelevantDocIds(const std::vector<std::string>& words)
+{
+	const auto wordDataList = GetWordsDataFromIndex(words);
 
 	std::unordered_map<uint64_t, double> fileRelevant;
 	std::mutex relevantMutex;
@@ -265,7 +268,9 @@ std::vector<std::pair<uint64_t, double>> Controller::FindMostRelevantDocIds(cons
 	return GetTopMapItems(fileRelevant, 10);
 }
 
-std::vector<std::pair<uint64_t, double>> GetTopMapItems(const std::unordered_map<uint64_t, double>& inputMap, const int top)
+std::vector<std::pair<uint64_t, double>> GetTopMapItems(
+	const std::unordered_map<uint64_t, double>& inputMap,
+	const int top)
 {
 	std::vector<std::pair<uint64_t, double>> pairs(inputMap.begin(), inputMap.end());
 	const auto n = std::min<size_t>(top, pairs.size());
@@ -282,11 +287,10 @@ std::vector<std::pair<uint64_t, double>> GetTopMapItems(const std::unordered_map
 	{
 		pairs.resize(n);
 	}
-
 	return pairs;
 }
 
-void Controller::PrintFilesRelevantInfo(const std::vector<std::pair<uint64_t, double>>& filesRelevantInfo)
+void MtSearch::PrintFilesRelevantInfo(const std::vector<std::pair<uint64_t, double>>& filesRelevantInfo)
 {
 	int n = 1;
 	for (const auto& [docId, relevant] : filesRelevantInfo)
@@ -298,7 +302,7 @@ void Controller::PrintFilesRelevantInfo(const std::vector<std::pair<uint64_t, do
 	}
 }
 
-void Controller::PrintAllFiles()
+void MtSearch::PrintAllFiles()
 {
 	int n = 1;
 	std::shared_lock lock(m_indexMutex);
@@ -309,7 +313,7 @@ void Controller::PrintAllFiles()
 	}
 }
 
-void Controller::PrintIndexInfo()
+void MtSearch::PrintIndexInfo()
 {
 	int n = 1;
 	std::shared_lock lock(m_indexMutex);
@@ -330,20 +334,19 @@ void Controller::PrintIndexInfo()
 	}
 }
 
-void Controller::ProcessFindBatch(const std::string& fileUrl)
+void MtSearch::ProcessFindBatch(const std::string& fileUrl)
 {
 	std::ifstream file(fileUrl);
-
 	if (!file.is_open())
 	{
 		std::cerr << "Cannot open file: " << fileUrl << std::endl;
 		return;
 	}
 
-	boost::asio::thread_pool threadPool(m_threads);
-
 	int queryNum = 0;
 	std::string line;
+	boost::asio::thread_pool threadPool(m_threads);
+
 	while (std::getline(file, line))
 	{
 		auto words = SplitBySpaces(line);
@@ -360,11 +363,10 @@ void Controller::ProcessFindBatch(const std::string& fileUrl)
 			PrintFilesRelevantInfo(filesInfo);
 		});
 	}
-
 	threadPool.join();
 }
 
-uint64_t Controller::GetFileIdByUrl(const std::string& fileUrl)
+uint64_t MtSearch::GetFileIdByUrl(const std::string& fileUrl)
 {
 	std::shared_lock lock(m_indexMutex);
 	for (const auto& [docId, file] : m_files)
@@ -377,7 +379,7 @@ uint64_t Controller::GetFileIdByUrl(const std::string& fileUrl)
 	throw std::invalid_argument("File does not exist");
 }
 
-void Controller::RemoveFileFromIndex(const std::string& fileUrl) // TODO не работает
+void MtSearch::RemoveFileFromIndex(const std::string& fileUrl) // TODO не работает
 {
 	std::unique_lock lock(m_indexMutex);
 
@@ -423,7 +425,7 @@ void Controller::RemoveFileFromIndex(const std::string& fileUrl) // TODO не р
 	}
 }
 
-void Controller::RemoveDirFromIndex(const std::string& dirPath, bool recursively)
+void MtSearch::RemoveDirFromIndex(const std::string& dirPath, const bool recursively)
 {
 	MtProcessDirectory(
 		dirPath,
@@ -433,7 +435,7 @@ void Controller::RemoveDirFromIndex(const std::string& dirPath, bool recursively
 		recursively);
 }
 
-void Controller::MtProcessDirectory(
+void MtSearch::MtProcessDirectory(
 	const std::string& dirPath,
 	std::function<void(const std::string&)> callback,
 	const bool recursively) const

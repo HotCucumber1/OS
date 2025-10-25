@@ -7,7 +7,7 @@
 #include <vector>
 #include <functional>
 
-class Controller
+class MtSearch
 {
 private:
 	struct DocInfo
@@ -17,11 +17,17 @@ private:
 		int totalWordCount;
 	};
 
+	struct WordData
+	{
+		double idf;
+		std::vector<DocInfo> docs;
+	};
+
 	using InvertIndex = std::unordered_map<std::string, std::vector<DocInfo>>;
 	using FileInfo = std::vector<std::pair<uint64_t, double>>;
 
 public:
-	explicit Controller(std::istream& input, std::ostream& output, int threads);
+	explicit MtSearch(std::istream& input, std::ostream& output, int threads);
 	void Run();
 
 private:
@@ -34,6 +40,7 @@ private:
 	void RemoveFileFromIndex(const std::string& fileUrl);
 	void RemoveDirFromIndex(const std::string& dirPath, bool recursively);
 	uint64_t GetFileIdByUrl(const std::string& fileUrl);
+	std::vector<WordData> GetWordsDataFromIndex(const std::vector<std::string>& words);
 
 	void MtProcessDirectory(
 		const std::string& dirPath,

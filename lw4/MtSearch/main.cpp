@@ -1,4 +1,4 @@
-#include "Controller/Controller.h"
+#include "MtSearch.h"
 
 #include <chrono>
 #include <iostream>
@@ -7,7 +7,7 @@ int main()
 {
 	try
 	{
-		Controller controller(std::cin, std::cout, 16);
+		MtSearch controller(std::cin, std::cout, 16);
 		controller.Run();
 	}
 	catch (const std::exception& e)
