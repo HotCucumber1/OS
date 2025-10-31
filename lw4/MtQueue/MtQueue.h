@@ -109,26 +109,15 @@ public:
 			return;
 		}
 
-		std::scoped_lock lock(m_mutex, other.m_mutex);
-		std::swap(m_queue, other.m_queue);
-		std::swap(m_capacity, other.m_capacity);
-
-		if (!IsEmpty())
+		if (this < &other)
 		{
-			m_cv_not_empty.notify_all();
+			std::scoped_lock lock(m_mutex, other.m_mutex);
+			DoSwap(other);
 		}
-		if (!other.IsEmpty())
+		else
 		{
-			other.m_cv_not_empty.notify_all();
-		}
-
-		if (!IsFull())
-		{
-			m_cv_not_full.notify_all();
-		}
-		if (!other.IsFull())
-		{
-			m_cv_not_full.notify_all();
+			std::scoped_lock lock(other.m_mutex, m_mutex);
+			DoSwap(other);
 		}
 	}
 
@@ -137,7 +126,7 @@ public:
 		std::unique_lock lock(m_mutex);
 		std::swap(m_queue, other);
 
-		if (!IsEmpty())
+		if (!m_queue.empty())
 		{
 			m_cv_not_empty.notify_all();
 		}
@@ -153,7 +142,7 @@ private:
 		return m_capacity > 0 && m_queue.size() == m_capacity;
 	}
 
-	template<typename U>
+	template <typename U>
 	void DoPush(U&& value)
 	{
 		std::unique_lock lock(m_mutex);
@@ -169,7 +158,7 @@ private:
 		m_cv_not_empty.notify_one();
 	}
 
-	template<typename U>
+	template <typename U>
 	bool DoTryPush(U&& value)
 	{
 		std::unique_lock lock(m_mutex);
@@ -181,6 +170,29 @@ private:
 		m_queue.emplace_back(std::forward<U>(value));
 		m_cv_not_empty.notify_one();
 		return true;
+	}
+
+	void DoSwap(MtQueue& other)
+	{
+		std::swap(m_queue, other.m_queue);
+		std::swap(m_capacity, other.m_capacity);
+
+		if (!m_queue.empty())
+		{
+			m_cv_not_empty.notify_all();
+		}
+		if (!other.m_queue.empty())
+		{
+			other.m_cv_not_empty.notify_all();
+		}
+		if (!IsFull())
+		{
+			m_cv_not_full.notify_all();
+		}
+		if (!other.IsFull())
+		{
+			other.m_cv_not_full.notify_all();
+		}
 	}
 
 	size_t m_capacity;
