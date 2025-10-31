@@ -9,9 +9,10 @@ TEST_CASE("Search benchmark")
 	std::stringstream input;
 	std::stringstream output;
 
-	const std::string dirUrl = "/test/dir"; // 39380
+	const std::string dirUrl = "/home/dmitriy.rybakov/projects/crm/crm-app/lib"; // 39380
 
 	std::vector<double> results;
+
 	for (int i : { 16, 8, 4, 2, 1 })
 	{
 		MtSearch search(input, output, i);
@@ -28,13 +29,14 @@ TEST_CASE("Search benchmark")
 		};
 	}
 }
+// TODO оценить степень параллелизма (закон Амдала)
 
 TEST_CASE("Index benchmark")
 {
 	std::stringstream input;
 	std::stringstream output;
 
-	const std::string dirUrl = "/test/dir"; // 39380
+	const std::string dirUrl = "/home/dmitriy.rybakov/projects/crm/crm-app/lib"; // 39380
 
 	std::vector<double> results;
 	for (int i : { 16, 8, 4, 2, 1 })

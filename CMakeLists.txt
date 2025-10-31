@@ -16,3 +16,4 @@ add_subdirectory(lw3/MtImgSim)
 add_subdirectory(lw3/Thumbgen)
 
 add_subdirectory(lw4/MtSearch)
+add_subdirectory(lw4/MtQueue)

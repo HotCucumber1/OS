@@ -180,8 +180,9 @@ void MtSearch::AddFileToIndex(const std::string& filePath)
 		return;
 	}
 
-	auto docId = m_docIndex.fetch_add(1, std::memory_order_relaxed);
+	auto docId = m_docIndex.fetch_add(1, std::memory_order_relaxed); // TODO почему memory_order_relaxed
 	{
+		// TODO какое отношение порядка, и как операции связаны с
 		std::unique_lock lock(m_indexMutex);
 		m_files[docId] = filePath;
 	}
@@ -200,11 +201,11 @@ void MtSearch::AddFileToIndex(const std::string& filePath)
 	std::unique_lock lock(m_indexMutex);
 	for (auto& [word, docs] : localUpdates)
 	{
-		auto& targetList = m_invertIndex[word];
+		auto& targetList = m_invertIndex[word]; // TODO нужно сделать эффективное удаление
 		targetList.insert(
 			targetList.end(),
 			std::make_move_iterator(docs.begin()),
-			std::make_move_iterator(docs.end()));
+			std::make_move_iterator(docs.end())); // TODO сравнить через бенчмарк этот подход с более гранулярным блоком
 	}
 }
 
@@ -251,11 +252,12 @@ std::vector<std::pair<uint64_t, double>> MtSearch::FindMostRelevantDocIds(const 
 	std::mutex relevantMutex;
 	boost::asio::thread_pool threadPool(m_threads);
 
+	// TODO тредпул, возможно, лучше прикрутить снаружи
 	for (const auto& wordData : wordDataList)
 	{
 		for (const auto& doc : wordData.docs)
 		{
-			boost::asio::post(threadPool, [&fileRelevant, &relevantMutex, wordData, doc]() {
+			boost::asio::post(threadPool, [&fileRelevant, &relevantMutex, wordData, doc]() { // TODO либо в один поток, либо разбить на более крупные крупные
 				const double wordRelevant = doc.termFrequency * wordData.idf;
 
 				std::unique_lock lock(relevantMutex);
@@ -319,10 +321,6 @@ void MtSearch::PrintIndexInfo()
 	std::shared_lock lock(m_indexMutex);
 	for (const auto& [word, fileInfo] : m_invertIndex)
 	{
-		if (word != "class")
-		{
-			continue;
-		}
 		m_output << n << ") word: " << word << " [";
 
 		for (const auto& file : fileInfo)

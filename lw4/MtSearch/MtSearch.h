@@ -27,6 +27,7 @@ private:
 	using FileInfo = std::vector<std::pair<uint64_t, double>>;
 
 public:
+	// TODO отделить ввод-вывод от самого индекса
 	explicit MtSearch(std::istream& input, std::ostream& output, int threads);
 	void Run();
 	void AddFileToIndex(const std::string& filePath);
