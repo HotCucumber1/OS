@@ -1,5 +1,6 @@
 add_executable(MtQueue main.cpp)
 add_executable(TestMtQueue MtQueueTest.cpp)
+add_executable(NotifyBenchmark NotifyBenchmark.cpp)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -10,3 +11,4 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 target_link_libraries(TestMtQueue PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(NotifyBenchmark PRIVATE Catch2::Catch2WithMain)

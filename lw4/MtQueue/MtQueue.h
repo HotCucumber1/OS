@@ -43,7 +43,7 @@ public:
 		}
 		out = std::move(m_queue.front());
 		m_queue.pop_front();
-		m_cv_not_full.notify_one();
+		m_cvNotFull.notify_one();
 		return true;
 	}
 
@@ -57,7 +57,7 @@ public:
 		auto out = std::make_unique<T>(std::move(m_queue.front()));
 
 		m_queue.pop_front();
-		m_cv_not_full.notify_one();
+		m_cvNotFull.notify_one();
 		return out;
 	}
 
@@ -66,28 +66,35 @@ public:
 		static_assert(std::is_nothrow_move_constructible_v<T>, "WaitAndPop by value requires T to be nothrow move constructible");
 
 		std::unique_lock lock(m_mutex);
-		m_cv_not_empty.wait(lock, [this] {
-			return !m_queue.empty();
+		m_cvNotEmpty.wait(lock, [this] {
+			return !m_queue.empty() || m_shutDown;
 		});
 
 		T out = std::move(m_queue.front());
 
 		m_queue.pop_front();
-		m_cv_not_full.notify_one();
+		m_cvNotFull.notify_one();
 		return out;
 	}
 
 	void WaitAndPop(T& out)
 	{
 		std::unique_lock lock(m_mutex);
-		m_cv_not_empty.wait(lock, [this] {
-			return !m_queue.empty();
+		m_cvNotEmpty.wait(lock, [this] {
+			return !m_queue.empty() || m_shutDown;
 		});
 
-		out = std::move(m_queue.front());
+		if constexpr (std::is_nothrow_move_assignable_v<T> || !std::is_copy_assignable_v<T>)
+		{
+			out = std::move(m_queue.front());
+		}
+		else
+		{
+			out = m_queue.front();
+		}
 
 		m_queue.pop_front();
-		m_cv_not_full.notify_one();
+		m_cvNotFull.notify_one();
 	}
 
 	size_t GetSize() const
@@ -102,23 +109,15 @@ public:
 		return m_queue.empty();
 	}
 
-	void Swap(MtQueue& other)
+	void Swap(MtQueue& other, const bool needNotifyAll = true)
 	{
 		if (this == &other)
 		{
 			return;
 		}
 
-		if (this < &other)
-		{
-			std::scoped_lock lock(m_mutex, other.m_mutex);
-			DoSwap(other);
-		}
-		else
-		{
-			std::scoped_lock lock(other.m_mutex, m_mutex);
-			DoSwap(other);
-		}
+		std::scoped_lock lock(m_mutex, other.m_mutex);
+		DoSwap(other, needNotifyAll);
 	}
 
 	void Swap(std::deque<T>& other)
@@ -128,16 +127,24 @@ public:
 
 		if (!m_queue.empty())
 		{
-			m_cv_not_empty.notify_all();
+			m_cvNotEmpty.notify_all();
 		}
 		if (!IsFull())
 		{
-			m_cv_not_full.notify_all();
+			m_cvNotFull.notify_all();
 		}
 	}
 
+	void Shutdown()
+	{
+		std::lock_guard lock(m_mutex);
+		m_shutDown = true;
+		m_cvNotEmpty.notify_all();
+		m_cvNotFull.notify_all();
+	}
+
 private:
-	bool IsFull()
+	bool IsFull() const
 	{
 		return m_capacity > 0 && m_queue.size() == m_capacity;
 	}
@@ -149,13 +156,13 @@ private:
 
 		if (m_capacity > 0)
 		{
-			m_cv_not_full.wait(lock, [this] {
+			m_cvNotFull.wait(lock, [this] {
 				return !IsFull();
 			});
 		}
 
 		m_queue.emplace_back(std::forward<U>(value));
-		m_cv_not_empty.notify_one();
+		m_cvNotEmpty.notify_one();
 	}
 
 	template <typename U>
@@ -168,36 +175,49 @@ private:
 		}
 
 		m_queue.emplace_back(std::forward<U>(value));
-		m_cv_not_empty.notify_one();
+		m_cvNotEmpty.notify_one();
 		return true;
 	}
 
-	void DoSwap(MtQueue& other)
+	void DoSwap(MtQueue& other, const bool needNotifyAll)
 	{
 		std::swap(m_queue, other.m_queue);
 		std::swap(m_capacity, other.m_capacity);
+		std::swap(m_shutDown, other.m_shutDown);
+
+		auto notify = [needNotifyAll](auto& cv) {
+			if (needNotifyAll)
+			{
+				cv.notify_all();
+			}
+			else
+			{
+				cv.notify_one();
+			}
+		};
 
 		if (!m_queue.empty())
 		{
-			m_cv_not_empty.notify_all();
+			notify(m_cvNotEmpty);
 		}
 		if (!other.m_queue.empty())
 		{
-			other.m_cv_not_empty.notify_all();
+			notify(other.m_cvNotEmpty);
 		}
 		if (!IsFull())
 		{
-			m_cv_not_full.notify_all();
+			notify(m_cvNotFull);
 		}
 		if (!other.IsFull())
 		{
-			other.m_cv_not_full.notify_all();
+			notify(other.m_cvNotFull);
 		}
 	}
 
+	bool m_shutDown = false;
 	size_t m_capacity;
 	std::deque<T> m_queue;
 	mutable std::shared_mutex m_mutex;
-	std::condition_variable_any m_cv_not_empty;
-	std::condition_variable_any m_cv_not_full;
+	std::condition_variable_any m_cvNotEmpty;
+	std::condition_variable_any m_cvNotFull;
 };

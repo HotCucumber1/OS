@@ -217,3 +217,41 @@ void PrintDrivesInfo()
         drive += strlen(drive) + 1;
     }
 }
+
+
+// if (!pte.IsPresent())
+// {
+// 	m_handler.OnPageFault(*this, virtualAddress, isWrite ? Access::Write : Access::Read, PageFaultReason::NotPresent);
+// }
+//
+// if (isWrite)
+// {
+// 	if (!pte.IsWritable())
+// 	{
+// 		m_handler.OnPageFault(*this, virtualAddress, Access::Write, PageFaultReason::WriteToReadOnly);
+// 	}
+// 	if (privilege == Privilege::User && !pte.IsUser())
+// 	{
+// 		m_handler.OnPageFault(*this, virtualAddress, Access::Write, PageFaultReason::UserAccessToSupervisor);
+// 	}
+// 	else
+// 	{
+// 		pte.SetAccessed(true);
+// 		pte.SetDirty(true);
+// 	}
+// }
+// else
+// {
+// 	if (isExecute && pte.IsNX())
+// 	{
+// 		m_handler.OnPageFault(*this, virtualAddress, Access::Read, PageFaultReason::ExecOnNX);
+// 	}
+// 	if (privilege == Privilege::User && !pte.IsUser())
+// 	{
+// 		m_handler.OnPageFault(*this, virtualAddress, Access::Read, PageFaultReason::UserAccessToSupervisor);
+// 	}
+// 	else
+// 	{
+// 		pte.SetAccessed(true);
+// 	}
+// }
