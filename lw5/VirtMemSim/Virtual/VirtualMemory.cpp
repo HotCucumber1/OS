@@ -168,15 +168,13 @@ void VirtualMemory::WritePTE(const uint32_t physicalAddress, const PTE& pte) con
 	m_physicalMem.Write32(physicalAddress, pte.raw);
 }
 
-// TODO переименовать (понятно, что true - ошибка)
-bool VirtualMemory::IsPageFaultHandled(
+bool VirtualMemory::IsPageFaultHandled( // TODO лучше еще раз подумать по имени
 	const PTE& pte,
 	const uint32_t virtualAddress,
 	const Privilege privilege,
 	const bool isWrite,
 	const bool isExecute,
-	const bool isPDE
-	)
+	const bool isPDE) // TODO судя по неймингу метод должен быть константным
 {
 	if (!pte.IsPresent())
 	{
@@ -192,8 +190,7 @@ bool VirtualMemory::IsPageFaultHandled(
 				*this,
 				virtualAddress >> PTE::FRAME_SHIFT,
 				isWrite ? Access::Write : Access::Read,
-				PageFaultReason::UserAccessToSupervisor
-				);
+				PageFaultReason::UserAccessToSupervisor);
 			throw std::runtime_error("User access to supervisor");
 		}
 		return false;
@@ -204,12 +201,12 @@ bool VirtualMemory::IsPageFaultHandled(
 		if (!pte.IsWritable())
 		{
 			m_handler.OnPageFault(*this, virtualAddress, Access::Write, PageFaultReason::WriteToReadOnly);
-			throw std::runtime_error("Write to readonly bytes");
+			return true;
 		}
 		if (privilege == Privilege::User && !pte.IsUser())
 		{
 			m_handler.OnPageFault(*this, virtualAddress, Access::Write, PageFaultReason::UserAccessToSupervisor);
-			throw std::runtime_error("User access to supervisor");
+			return true;
 		}
 	}
 	else
@@ -217,12 +214,12 @@ bool VirtualMemory::IsPageFaultHandled(
 		if (isExecute && pte.IsNX())
 		{
 			m_handler.OnPageFault(*this, virtualAddress, Access::Read, PageFaultReason::ExecOnNX);
-			throw std::runtime_error("Execute on NX");
+			return true;
 		}
 		if (privilege == Privilege::User && !pte.IsUser())
 		{
 			m_handler.OnPageFault(*this, virtualAddress, Access::Read, PageFaultReason::UserAccessToSupervisor);
-			throw std::runtime_error("User access to supervisor");
+			return true;
 		}
 	}
 

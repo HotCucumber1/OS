@@ -11,7 +11,6 @@ constexpr PID BLOCK_SIZE = 1024;
 void AssertValueSize(const std::string& value);
 int SearchInLeaf(uint8_t* page, KEY key);
 PID SearchInternalNode(uint8_t* page, KEY key);
-void RemoveKeyFromInternal(uint8_t* page, KEY key, PID oldChildPid);
 
 BPlusTree::BPlusTree(std::string sourceFile, std::ostream& output)
 	: m_filePath(std::move(sourceFile))
