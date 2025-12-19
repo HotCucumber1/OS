@@ -1,210 +1,225 @@
+#include "../OSHandler/MyOS.h"
+#include "../PTE/PageTableEntry.h"
 #include "../Virtual/VirtualMemory.h"
-#include "MockOSHandler.h"
 #include <catch2/catch_all.hpp>
+#include <filesystem>
 #include <iostream>
 
-TEST_CASE("VirtualMemory basic translation", "[VirtualMemory]")
+void SetupInitialMapping(PhysicalMemory& physMem, VirtualMemory& virtMem, uint32_t pdFrame, uint32_t ptFrame)
 {
-	MockOSHandler mockHandler;
-	PhysicalMemoryConfig config{ 1024, 4096 };
-	PhysicalMemory physMem(config);
-	VirtualMemory virtMem(physMem, mockHandler);
+	virtMem.SetPageTableAddress(pdFrame * PTE::PAGE_SIZE);
 
-	SECTION("Without page table uses direct mapping")
+	PTE pde;
+	pde.SetPresent(true);
+	pde.SetWritable(true);
+	pde.SetUser(true);
+	pde.SetFrame(ptFrame);
+
+	physMem.Write32(pdFrame * PTE::PAGE_SIZE, pde.raw);
+
+	for (uint32_t i = 0; i < PTE::PAGE_SIZE / sizeof(PTE); ++i)
 	{
-		physMem.Write32(0x1234, 0xDEADBEEF);
-		REQUIRE(virtMem.Read32(0x1234, Privilege::Supervisor) == 0xDEADBEEF);
-	}
-
-	SECTION("Get/Set page table address")
-	{
-		virtMem.SetPageTableAddress(0x5000);
-		REQUIRE(virtMem.GetPageTableAddress() == 0x5000);
-	}
-
-	SECTION("Misaligned page table address causes page fault")
-	{
-		MockOSHandler mockHandler1;
-		VirtualMemory vm(physMem, mockHandler1);
-
-		vm.SetPageTableAddress(0x1001);
-
-		REQUIRE(mockHandler1.pageFaultCalls.size() == 1);
-		REQUIRE(mockHandler1.pageFaultCalls[0].reason == PageFaultReason::MisalignedAccess);
+		physMem.Write32(ptFrame * PTE::PAGE_SIZE + i * sizeof(PTE), 0);
 	}
 }
 
-TEST_CASE("VirtualMemory with page table", "[VirtualMemory]")
+TEST_CASE("MyOS Constructor and Initialization", "[MyOS][Init]")
 {
-	MockOSHandler mockHandler;
-	PhysicalMemoryConfig config{ 1024, 4096 };
+	PhysicalMemoryConfig config{ 16, 4096 };
 	PhysicalMemory physMem(config);
-	VirtualMemory virtMem(physMem, mockHandler);
+	std::filesystem::path swapPath = std::filesystem::temp_directory_path() / "os_init_test.bin";
 
-	constexpr uint32_t PAGE_TABLE_ADDR = 0x1000;
-	virtMem.SetPageTableAddress(PAGE_TABLE_ADDR);
+	MyOS os(swapPath, physMem);
 
-	SECTION("Page fault on non-present page")
+	SECTION("Initial counters are zero")
 	{
-		MockOSHandler mockHandler1;
-		VirtualMemory vm(physMem, mockHandler1);
-		vm.SetPageTableAddress(PAGE_TABLE_ADDR);
-
-		REQUIRE_THROWS(vm.Read32(0x2000, Privilege::Supervisor));
-
-		REQUIRE(mockHandler1.pageFaultCalls.size() == 2);
-		REQUIRE(mockHandler1.pageFaultCalls[0].reason == PageFaultReason::NotPresent);
-		REQUIRE(mockHandler1.pageFaultCalls[0].access == Access::Read);
-	}
-
-	SECTION("Successful translation with present page")
-	{
-		PTE pte;
-		pte.SetFrame(1);
-		pte.SetPresent(true);
-		pte.SetWritable(true);
-		pte.SetUser(true);
-
-		physMem.Write32(PAGE_TABLE_ADDR, pte.raw);
-		physMem.Write32(1 * 4096 + 0x100, 0x12345678);
-
-		REQUIRE(virtMem.Read32(0x100, Privilege::User) == 0x12345678);
-	}
-
-	SECTION("Write access sets dirty bit")
-	{
-		PTE pte;
-		pte.SetFrame(1);
-		pte.SetPresent(true);
-		pte.SetWritable(true);
-		pte.SetUser(true);
-		pte.SetAccessed(false);
-		pte.SetDirty(false);
-
-		physMem.Write32(PAGE_TABLE_ADDR, pte.raw);
-		virtMem.Write32(0x200, 0xABCD, Privilege::User);
-
-		PTE updatedPte;
-		updatedPte.raw = physMem.Read32(PAGE_TABLE_ADDR);
-		REQUIRE(updatedPte.IsAccessed() == true);
-		REQUIRE(updatedPte.IsDirty() == true);
-	}
-
-	SECTION("Read access sets accessed bit only")
-	{
-		PTE pte;
-		pte.SetFrame(1);
-		pte.SetPresent(true);
-		pte.SetWritable(true);
-		pte.SetUser(true);
-		pte.SetAccessed(false);
-		pte.SetDirty(false);
-
-		physMem.Write32(PAGE_TABLE_ADDR, pte.raw);
-		virtMem.Read32(0x200, Privilege::User);
-
-		PTE updatedPte;
-		updatedPte.raw = physMem.Read32(PAGE_TABLE_ADDR);
-		REQUIRE(updatedPte.IsAccessed() == true);
-		REQUIRE(updatedPte.IsDirty() == false);
+		REQUIRE(os.GetPageFaultCount() == 0);
+		REQUIRE(os.GetSwapReadCount() == 0);
+		REQUIRE(os.GetSwapWriteCount() == 0);
 	}
 }
 
-TEST_CASE("VirtualMemory access rights", "[VirtualMemory]")
+TEST_CASE("MyOS Page Fault - Basic NotPresent Handling", "[MyOS][PageFault]")
 {
-	PhysicalMemoryConfig config{ 1024, 4096 };
+	PhysicalMemoryConfig config{ 64, 4096 };
 	PhysicalMemory physMem(config);
-	MockOSHandler mockHandler;
-	VirtualMemory virtMem(physMem, mockHandler);
+	MyOS os(std::filesystem::temp_directory_path() / "os_fault_basic.bin", physMem);
+	VirtualMemory virtMem(physMem, os);
 
-	constexpr uint32_t PAGE_TABLE_ADDR = 0x1000;
-	virtMem.SetPageTableAddress(PAGE_TABLE_ADDR);
+	SetupInitialMapping(physMem, virtMem, 1, 2);
 
-	SECTION("User access to supervisor page causes fault")
+	uint32_t vpn = 1;
+	uint32_t pteAddr = 2 * PTE::PAGE_SIZE + vpn * sizeof(PTE);
+	physMem.Write32(pteAddr, 0);
+
+	SECTION("Successful handling of NotPresent fault")
 	{
-		PTE pte;
-		pte.SetFrame(1);
-		pte.SetPresent(true);
-		pte.SetWritable(true);
-		pte.SetUser(false);
-		physMem.Write32(PAGE_TABLE_ADDR, pte.raw);
+		uint32_t virtualAddress = vpn * PTE::PAGE_SIZE + 0x100;
 
-		REQUIRE_THROWS(virtMem.Read32(0x100, Privilege::User));
+		REQUIRE_NOTHROW(virtMem.Read8(virtualAddress, Privilege::User, false));
 
-		REQUIRE(mockHandler.pageFaultCalls.size() == 1);
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::UserAccessToSupervisor);
+		REQUIRE(os.GetPageFaultCount() == 1);
+
+		PTE newPte;
+		newPte.raw = physMem.Read32(pteAddr);
+		REQUIRE(newPte.IsPresent());
+		REQUIRE(newPte.GetFrame() >= 3);
 	}
 
-	SECTION("Supervisor access to user page works")
+	SECTION("Write access sets PTE Writable")
 	{
-		PTE pte;
-		pte.SetFrame(1);
-		pte.SetPresent(true);
-		pte.SetWritable(true);
-		pte.SetUser(true);
-		physMem.Write32(PAGE_TABLE_ADDR, pte.raw);
+		uint32_t vpn_write = 2;
+		uint32_t pteAddr_write = 2 * PTE::PAGE_SIZE + vpn_write * sizeof(PTE);
+		physMem.Write32(pteAddr_write, 0);
+		uint32_t virtualAddress = vpn_write * PTE::PAGE_SIZE;
 
-		REQUIRE_NOTHROW(virtMem.Read32(0x100, Privilege::Supervisor));
+		REQUIRE_NOTHROW(virtMem.Write8(virtualAddress, 0xAA, Privilege::User));
+
+		PTE newPte;
+		newPte.raw = physMem.Read32(pteAddr_write);
+		REQUIRE(newPte.IsPresent());
+		REQUIRE(newPte.IsWritable());
+		REQUIRE(newPte.IsDirty());
+		REQUIRE(os.GetPageFaultCount() == 1);
 	}
 
-	SECTION("Write to read-only page causes fault")
+	SECTION("Fault on non-present PDE leads to PT creation")
 	{
-		PTE pte;
-		pte.SetFrame(1);
-		pte.SetPresent(true);
-		pte.SetWritable(false);
-		pte.SetUser(true);
-		physMem.Write32(PAGE_TABLE_ADDR, pte.raw);
+		uint32_t large_vpn = 1024;
+		uint32_t virtualAddress = large_vpn * PTE::PAGE_SIZE;
+		uint32_t pdeAddr_for_vpn = 1 * PTE::PAGE_SIZE + 1 * sizeof(PTE);
 
-		REQUIRE_THROWS(virtMem.Write32(0x100, 0x1234, Privilege::User));
+		REQUIRE(physMem.Read32(pdeAddr_for_vpn) == 0);
 
-		REQUIRE(mockHandler.pageFaultCalls.size() == 1);
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::WriteToReadOnly);
+		REQUIRE_NOTHROW(virtMem.Read8(virtualAddress, Privilege::User, false));
+
+		PTE newPde;
+		newPde.raw = physMem.Read32(pdeAddr_for_vpn);
+		REQUIRE(newPde.IsPresent());
+		REQUIRE(newPde.GetFrame() == 1000);
+
+		uint32_t pt_addr = 1000 * PTE::PAGE_SIZE;
+		uint32_t pte_addr = pt_addr + (large_vpn & 0x3FF) * sizeof(PTE);
+		PTE newPte;
+		newPte.raw = physMem.Read32(pte_addr);
+		REQUIRE(newPte.IsPresent());
+		REQUIRE(newPte.GetFrame() >= 3);
 	}
 }
 
-TEST_CASE("VirtualMemory misaligned access", "[VirtualMemory]")
+TEST_CASE("MyOS Aging and Frame Displacement", "[MyOS][Aging]")
 {
-	PhysicalMemoryConfig config{ 1024, 4096 };
+	PhysicalMemoryConfig config{ 8, 4096 };
 	PhysicalMemory physMem(config);
-	MockOSHandler mockHandler;
-	VirtualMemory virtMem(physMem, mockHandler);
+	MyOS os(std::filesystem::temp_directory_path() / "os_aging.bin", physMem);
+	VirtualMemory virtMem(physMem, os);
 
-	virtMem.SetPageTableAddress(0x1000);
+	SetupInitialMapping(physMem, virtMem, 0, 1);
 
-	SECTION("Misaligned Read16 causes page fault")
+	for (int i = 2; i < 8; ++i)
 	{
-		REQUIRE_THROWS(virtMem.Read16(0x1001, Privilege::User));
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::MisalignedAccess);
+		uint32_t vpn = i;
+		uint32_t virtualAddress = vpn * PTE::PAGE_SIZE;
+		uint32_t pteAddr = 1 * PTE::PAGE_SIZE + vpn * sizeof(PTE);
+
+		physMem.Write32(pteAddr, 0);
+		REQUIRE_NOTHROW(virtMem.Write8(virtualAddress, 0x01, Privilege::User));
 	}
 
-	SECTION("Misaligned Read32 causes page fault")
+	REQUIRE(os.GetPageFaultCount() == 6);
+	REQUIRE(os.GetSwapWriteCount() == 0);
+
+	for (int i = 0; i < 10; ++i)
 	{
-		REQUIRE_THROWS(virtMem.Read32(0x1002, Privilege::User));
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::MisalignedAccess);
+		os.TimerInterrupt();
 	}
 
-	SECTION("Misaligned Read64 causes page fault")
+	uint32_t vpn_victim = 2;
+	uint32_t vpn_new = 8;
+	uint32_t pteAddr_new = 1 * PTE::PAGE_SIZE + vpn_new * sizeof(PTE);
+	physMem.Write32(pteAddr_new, 0);
+
+	REQUIRE_NOTHROW(virtMem.Read8(vpn_new * PTE::PAGE_SIZE, Privilege::User, false));
+
+	REQUIRE(os.GetPageFaultCount() == 7);
+	REQUIRE(os.GetSwapWriteCount() >= 1);
+
+	uint32_t pteAddr_victim = 1 * PTE::PAGE_SIZE + vpn_victim * sizeof(PTE);
+	PTE victimPte;
+	victimPte.raw = physMem.Read32(pteAddr_victim);
+	REQUIRE_FALSE(victimPte.IsPresent());
+}
+
+TEST_CASE("MyOS Swap Operations (Read/Write)", "[MyOS][Swap]")
+{
+	PhysicalMemoryConfig config{ 4, 4096 };
+	PhysicalMemory physMem(config);
+	std::filesystem::path swapPath = std::filesystem::temp_directory_path() / "os_swap_full.bin";
+	if (std::filesystem::exists(swapPath))
 	{
-		REQUIRE_THROWS(virtMem.Read64(0x1004, Privilege::User));
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::MisalignedAccess);
+		std::filesystem::remove(swapPath);
+	}
+	MyOS os(swapPath, physMem);
+	VirtualMemory virtMem(physMem, os);
+
+	SetupInitialMapping(physMem, virtMem, 0, 1);
+
+	uint32_t vpn_dirty = 3;
+	uint32_t vpn_dirty_addr = vpn_dirty * PTE::PAGE_SIZE;
+	uint32_t pteAddr_dirty = 1 * PTE::PAGE_SIZE + vpn_dirty * sizeof(PTE);
+	physMem.Write32(pteAddr_dirty, 0);
+	REQUIRE_NOTHROW(virtMem.Write32(vpn_dirty_addr, 0xDEADBEEF, Privilege::User));
+
+	uint32_t vpn_new = 4;
+	uint32_t pteAddr_new = 1 * PTE::PAGE_SIZE + vpn_new * sizeof(PTE);
+	physMem.Write32(pteAddr_new, 0);
+
+	REQUIRE_NOTHROW(virtMem.Read8(vpn_new * PTE::PAGE_SIZE, Privilege::User, false));
+
+	REQUIRE(os.GetSwapWriteCount() == 1);
+	REQUIRE_FALSE(physMem.Read32(pteAddr_dirty) & PTE::P);
+
+	uint32_t vpn_next = 5;
+	uint32_t pteAddr_next = 1 * PTE::PAGE_SIZE + vpn_next * sizeof(PTE);
+	physMem.Write32(pteAddr_next, 0);
+
+	REQUIRE_NOTHROW(virtMem.Read8(vpn_next * PTE::PAGE_SIZE, Privilege::User, false));
+	REQUIRE(os.GetSwapWriteCount() == 1);
+
+	physMem.Write32(pteAddr_dirty, 0);
+
+	REQUIRE_NOTHROW(virtMem.Read32(vpn_dirty_addr, Privilege::User, false));
+
+	REQUIRE(os.GetSwapReadCount() == 1);
+
+	PTE finalPte;
+	finalPte.raw = physMem.Read32(pteAddr_dirty);
+	uint32_t finalFrame = finalPte.GetFrame();
+	uint32_t restoredValue = physMem.Read32(finalFrame * PTE::PAGE_SIZE);
+
+	REQUIRE(restoredValue == 0xDEADBEEF);
+}
+
+TEST_CASE("MyOS WriteToReadOnly Fault (Unsupported)", "[MyOS][Fault]")
+{
+	PhysicalMemoryConfig config{ 10, 4096 };
+	PhysicalMemory physMem(config);
+	MyOS os(std::filesystem::temp_directory_path() / "os_fault_unsupported.bin", physMem);
+	VirtualMemory virtMem(physMem, os);
+
+	SetupInitialMapping(physMem, virtMem, 1, 2);
+
+	SECTION("MisalignedAccess returns false")
+	{
+		bool result = os.OnPageFault(virtMem, 0x1000, Access::Read, PageFaultReason::MisalignedAccess);
+		REQUIRE(result == false);
+		REQUIRE(os.GetPageFaultCount() == 1);
 	}
 
-	SECTION("Misaligned Write16 causes page fault")
+	SECTION("WriteToReadOnly returns false")
 	{
-		REQUIRE_THROWS(virtMem.Write16(0x1001, 0x1234, Privilege::User));
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::MisalignedAccess);
-	}
-
-	SECTION("Misaligned Write32 causes page fault")
-	{
-		REQUIRE_THROWS(virtMem.Write32(0x1002, 0x1234, Privilege::User));
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::MisalignedAccess);
-	}
-
-	SECTION("Misaligned Write64 causes page fault")
-	{
-		REQUIRE_THROWS(virtMem.Write64(0x1004, 0x1234, Privilege::User));
-		REQUIRE(mockHandler.pageFaultCalls[0].reason == PageFaultReason::MisalignedAccess);
+		bool result = os.OnPageFault(virtMem, 0x1000, Access::Write, PageFaultReason::WriteToReadOnly);
+		REQUIRE(result == false);
+		REQUIRE(os.GetPageFaultCount() == 2);
 	}
 }

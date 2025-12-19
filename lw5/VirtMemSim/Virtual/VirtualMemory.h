@@ -36,7 +36,7 @@ private:
 		bool isExecute = false);
 	PTE ReadPTE(uint32_t physicalAddress) const;
 	void WritePTE(uint32_t physicalAddress, const PTE& pte) const;
-	bool IsPageFaultHandled(
+	bool VerifyPageAccess(
 		const PTE& pte,
 		uint32_t virtualAddress,
 		Privilege privilege,

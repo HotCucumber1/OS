@@ -72,7 +72,6 @@ void VirtualMemory::Write8(const uint32_t address, const uint8_t value, const Pr
 
 void VirtualMemory::Write16(const uint32_t address, const uint16_t value, const Privilege privilege)
 {
-	// TODO тесты доработать на выравнивание
 	if (address % 2 != 0)
 	{
 		m_handler.OnPageFault(*this, address, Access::Read, PageFaultReason::MisalignedAccess);
@@ -112,7 +111,6 @@ uint32_t VirtualMemory::TranslateAddress(
 		return virtualAddress;
 	}
 
-	// TODO вынести смещения в константы
 	const uint32_t pageDirIndex = (virtualAddress >> PAGE_DIR_SHIFT) & PAGE_TABLE_INDEX_MASK;
 	const uint32_t pageTableIndex = (virtualAddress >> PTE::FRAME_SHIFT) & PAGE_TABLE_INDEX_MASK;
 	const uint32_t pageOffset = virtualAddress & PAGE_OFFSET_MASK;
@@ -145,10 +143,10 @@ PTE VirtualMemory::GetPTE(
 {
 	auto pte = ReadPTE(pteAddr);
 
-	if (IsPageFaultHandled(pte, virtualAddress, privilege, isWrite, isExecute, isPDE))
+	if (VerifyPageAccess(pte, virtualAddress, privilege, isWrite, isExecute, isPDE))
 	{
 		pte = ReadPTE(pteAddr);
-		if (IsPageFaultHandled(pte, virtualAddress, privilege, isWrite, isExecute, isPDE))
+		if (VerifyPageAccess(pte, virtualAddress, privilege, isWrite, isExecute, isPDE))
 		{
 			throw std::runtime_error("Page Table fault not resolved after handler");
 		}
@@ -168,13 +166,13 @@ void VirtualMemory::WritePTE(const uint32_t physicalAddress, const PTE& pte) con
 	m_physicalMem.Write32(physicalAddress, pte.raw);
 }
 
-bool VirtualMemory::IsPageFaultHandled( // TODO лучше еще раз подумать по имени
+bool VirtualMemory::VerifyPageAccess( // TODO лучше еще раз подумать по имени
 	const PTE& pte,
 	const uint32_t virtualAddress,
 	const Privilege privilege,
 	const bool isWrite,
 	const bool isExecute,
-	const bool isPDE) // TODO судя по неймингу метод должен быть константным
+	const bool isPDE)
 {
 	if (!pte.IsPresent())
 	{

@@ -29,3 +29,5 @@ add_subdirectory(lw4/MtQueue)
 add_subdirectory(lw5/VirtMemSim)
 
 add_subdirectory(lw6/BPlusTree)
+
+add_subdirectory(lw7/FIleFlashImage)
