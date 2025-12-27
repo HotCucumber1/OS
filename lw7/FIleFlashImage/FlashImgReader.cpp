@@ -1,15 +1,19 @@
 #include "FlashImgReader.h"
 #include <cstring>
-#include <fcntl.h>
 #include <iomanip>
 #include <iostream>
 
+constexpr uint32_t FAT_END_OF_CHAIN_MARKER = 0x0FFFFFF8;
+constexpr uint32_t FAT_CLUSTER_MASK = 0x0FFFFFFF;
+constexpr uint32_t ROOT_CLUSTER = 0;
+constexpr uint32_t MIN_SECTOR_SIZE = 512;
+constexpr uint32_t MAX_SECTOR_SIZE = 4096;
+constexpr uint32_t UNICODE_ASCII_THRESHOLD = 128;
+
 template <typename T>
 void PrintValue(const std::string& name, const T& value, const std::string& unit = "");
-
 std::vector<std::string> Split(const std::string& sourceStr, char delimiter);
-
-std::string ReadLongNamePart(FAT32LongNameEntry* lfn);
+std::string ReadLongNamePart(const FAT32LongNameEntry* lfn);
 
 FlashImgReader::FlashImgReader(const std::string& imagePath, std::ostream& output)
 	: m_imagePath(imagePath)
@@ -93,82 +97,156 @@ std::vector<FlashImgReader::FileInfo> FlashImgReader::ReadDirectory(const uint32
 	auto currentCluster = cluster;
 	std::string longNameBuf;
 
-	while (currentCluster != 0 && currentCluster < 0x0FFFFFF8)
+	while (IsValidClusterForDirectory(currentCluster))
 	{
-		const auto sector = ClusterToSector(currentCluster);
-		auto offset = sector * m_bootSector.bytesPerSector;
-
-		m_file.seekg(offset, std::ios::beg);
-
-		const auto clusterSize = GetClusterSize();
-		std::vector<uint8_t> clusterData(clusterSize);
-		m_file.read(reinterpret_cast<char*>(clusterData.data()), clusterSize);
-
-		size_t pos = 0;
-		while (pos + sizeof(FAT32DirEntry) <= clusterSize)
-		{
-			auto record = reinterpret_cast<FAT32DirEntry*>(clusterData.data() + pos);
-			if (record->IsEndOfDir())
-			{
-				return records;
-			}
-
-			if (record->IsDeleted())
-			{
-				pos += sizeof(FAT32DirEntry);
-				continue;
-			}
-
-			if (record->IsLongName())
-			{
-				const auto lfn = reinterpret_cast<FAT32LongNameEntry*>(record);
-				const auto lfnPart = ReadLongNamePart(lfn);
-
-				if (lfn->IsLastEntry())
-				{
-					longNameBuf = lfnPart;
-				}
-				else
-				{
-					longNameBuf += lfnPart;
-				}
-			}
-			else
-			{
-				FileInfo info;
-				if (!longNameBuf.empty())
-				{
-					info.name = longNameBuf;
-					longNameBuf.clear();
-				}
-				else
-				{
-					info.name = record->GetShortName();
-				}
-
-				info.cluster = record->GetFirstCluster();
-				info.size = record->fileSize;
-				info.isDirectory = record->IsDirectory();
-				info.isLongName = !longNameBuf.empty();
-
-				if (info.name == "." || info.name == "..")
-				{
-					if (info.name == ".")
-					{
-						info.cluster = cluster;
-					}
-					else if (info.name == "..")
-					{
-						info.cluster = 0;
-					}
-				}
-				records.push_back(info);
-			}
-			pos += sizeof(FAT32DirEntry);
-		}
+		ProcessCluster(currentCluster, records, longNameBuf, cluster);
 		currentCluster = GetNextCluster(currentCluster);
 	}
+
 	return records;
+}
+
+bool FlashImgReader::IsValidClusterForDirectory(const uint32_t cluster)
+{
+	return cluster != ROOT_CLUSTER && cluster < FAT_END_OF_CHAIN_MARKER;
+}
+
+void FlashImgReader::ProcessCluster(
+	const uint32_t cluster,
+	std::vector<FileInfo>& records,
+	std::string& longNameBuf,
+	const uint32_t originalCluster)
+{
+	const auto clusterData = ReadClusterData(cluster);
+	ProcessClusterEntries(clusterData, records, longNameBuf, originalCluster);
+}
+
+std::vector<uint8_t> FlashImgReader::ReadClusterData(const uint32_t cluster)
+{
+	const auto sector = ClusterToSector(cluster);
+	const auto offset = sector * m_bootSector.bytesPerSector;
+
+	m_file.seekg(offset, std::ios::beg);
+
+	const auto clusterSize = GetClusterSize();
+	std::vector<uint8_t> clusterData(clusterSize);
+	m_file.read(reinterpret_cast<char*>(clusterData.data()), clusterSize);
+
+	return clusterData;
+}
+
+void FlashImgReader::ProcessClusterEntries(const std::vector<uint8_t>& clusterData,
+	std::vector<FileInfo>& records,
+	std::string& longNameBuf,
+	const uint32_t originalCluster)
+{
+	constexpr size_t entrySize = sizeof(FAT32DirEntry);
+	const size_t clusterSize = clusterData.size();
+
+	for (size_t pos = 0; pos + entrySize <= clusterSize; pos += entrySize)
+	{
+		const auto record = reinterpret_cast<const FAT32DirEntry*>(clusterData.data() + pos);
+
+		if (record->IsEndOfDir())
+		{
+			return;
+		}
+
+		if (record->IsDeleted())
+		{
+			continue;
+		}
+
+		if (!ProcessDirectoryEntry(record, records, longNameBuf, originalCluster))
+		{
+			return;
+		}
+	}
+}
+
+bool FlashImgReader::ProcessDirectoryEntry(
+	const FAT32DirEntry* record,
+	std::vector<FileInfo>& records,
+	std::string& longNameBuf,
+	const uint32_t originalCluster)
+{
+	if (record->IsEndOfDir())
+	{
+		return false;
+	}
+
+	if (record->IsLongName())
+	{
+		ProcessLongNameEntry(record, longNameBuf);
+		return true;
+	}
+	ProcessShortNameEntry(record, records, longNameBuf, originalCluster);
+	return true;
+}
+
+void FlashImgReader::ProcessLongNameEntry(const FAT32DirEntry* record, std::string& longNameBuf)
+{
+	const auto lfn = reinterpret_cast<const FAT32LongNameEntry*>(record);
+	const auto lfnPart = ReadLongNamePart(lfn);
+
+	if (lfn->IsLastEntry())
+	{
+		longNameBuf = lfnPart;
+	}
+	else
+	{
+		longNameBuf += lfnPart;
+	}
+}
+
+void FlashImgReader::ProcessShortNameEntry(const FAT32DirEntry* record,
+	std::vector<FileInfo>& records,
+	std::string& longNameBuf,
+	const uint32_t originalCluster)
+{
+	FileInfo info = CreateFileInfoFromRecord(record, longNameBuf);
+	AdjustSpecialDirectories(info, originalCluster);
+	records.push_back(info);
+
+	if (!longNameBuf.empty())
+	{
+		longNameBuf.clear();
+	}
+}
+
+FlashImgReader::FileInfo FlashImgReader::CreateFileInfoFromRecord(const FAT32DirEntry* record,
+	const std::string& longNameBuf)
+{
+	FileInfo info;
+
+	if (!longNameBuf.empty())
+	{
+		info.name = longNameBuf;
+		info.isLongName = true;
+	}
+	else
+	{
+		info.name = record->GetShortName();
+		info.isLongName = false;
+	}
+
+	info.cluster = record->GetFirstCluster();
+	info.size = record->fileSize;
+	info.isDirectory = record->IsDirectory();
+
+	return info;
+}
+
+void FlashImgReader::AdjustSpecialDirectories(FileInfo& info, uint32_t originalCluster)
+{
+	if (info.name == ".")
+	{
+		info.cluster = originalCluster;
+	}
+	else if (info.name == "..")
+	{
+		info.cluster = ROOT_CLUSTER;
+	}
 }
 
 uint32_t FlashImgReader::GetClusterSize() const
@@ -192,40 +270,34 @@ uint32_t FlashImgReader::GetNextCluster(const uint32_t currentCluster)
 	uint32_t nextCluster;
 	m_file.read(reinterpret_cast<char*>(&nextCluster), 4);
 
-	return nextCluster & 0x0FFFFFFF;
+	return nextCluster & FAT_CLUSTER_MASK;
 }
 
-std::string ReadLongNamePart(FAT32LongNameEntry* lfn)
+template <size_t N>
+std::wstring GetNamePart(const uint16_t (&namePart)[N])
 {
 	std::wstring wname;
-	for (const auto ch : lfn->name1)
+	for (const auto ch : namePart)
 	{
 		if (ch != 0xFFFF && ch != 0)
 		{
 			wname += ch;
 		}
 	}
+	return wname;
+}
 
-	for (const auto ch : lfn->name2)
-	{
-		if (ch != 0xFFFF && ch != 0)
-		{
-			wname += ch;
-		}
-	}
-
-	for (const auto ch : lfn->name3)
-	{
-		if (ch != 0xFFFF && ch != 0)
-		{
-			wname += ch;
-		}
-	}
+std::string ReadLongNamePart(const FAT32LongNameEntry* lfn)
+{
+	std::wstring wname;
+	wname += GetNamePart(lfn->name1);
+	wname += GetNamePart(lfn->name2);
+	wname += GetNamePart(lfn->name3);
 
 	std::string result;
 	for (const auto wc : wname)
 	{
-		if (wc < 128)
+		if (wc < UNICODE_ASCII_THRESHOLD)
 		{
 			result += static_cast<char>(wc);
 		}
@@ -270,7 +342,6 @@ void FlashImgReader::PrintBase() const
 
 void FlashImgReader::ReadBootSector()
 {
-	// const auto bytesRead = pread(m_descriptor, &m_bootSector, sizeof(m_bootSector), 0);
 	m_file.seekg(0, std::ios::beg);
 	m_file.read(reinterpret_cast<char*>(&m_bootSector), sizeof(m_bootSector));
 
@@ -292,7 +363,9 @@ void FlashImgReader::ReadBootSector()
 	}
 
 	const auto sectorSize = m_bootSector.bytesPerSector;
-	if (sectorSize < 512 || sectorSize > 4096 || (sectorSize & (sectorSize - 1)) != 0)
+	if (sectorSize < MIN_SECTOR_SIZE
+		|| sectorSize > MAX_SECTOR_SIZE
+		|| (sectorSize & (sectorSize - 1)) != 0)
 	{
 		throw std::runtime_error("Invalid sector size");
 	}
@@ -327,12 +400,15 @@ std::vector<uint8_t> FlashImgReader::ReadFileData(const uint32_t startCluster, c
 
 	auto curCluster = startCluster;
 	uint32_t bytesRead = 0;
-	uint32_t clusterSize = GetClusterSize();
+	const uint32_t clusterSize = GetClusterSize();
 
-	while (curCluster != 0 && curCluster < 0x0FFFFFF8 && bytesRead < fileSize && bytesRead < fileSize)
+	while (curCluster != ROOT_CLUSTER
+		&& curCluster < FAT_END_OF_CHAIN_MARKER
+		&& bytesRead < fileSize
+		&& bytesRead < fileSize)
 	{
-		auto sector = ClusterToSector(curCluster);
-		auto offset = sector * m_bootSector.bytesPerSector;
+		const auto sector = ClusterToSector(curCluster);
+		const auto offset = sector * m_bootSector.bytesPerSector;
 
 		m_file.seekg(offset, std::ios::beg);
 
@@ -345,7 +421,7 @@ std::vector<uint8_t> FlashImgReader::ReadFileData(const uint32_t startCluster, c
 
 		curCluster = GetNextCluster(curCluster);
 
-		if (curCluster >= 0x0FFFFFF8 || curCluster == 0)
+		if (curCluster >= FAT_END_OF_CHAIN_MARKER || curCluster == ROOT_CLUSTER)
 		{
 			break;
 		}

@@ -118,11 +118,6 @@ struct FAT32LongNameEntry
 	{
 		return (order & 0x40) != 0;
 	}
-
-	uint8_t GetSequenceNumber() const
-	{
-		return order & 0x3F;
-	}
 };
 
 #pragma pack(pop)
