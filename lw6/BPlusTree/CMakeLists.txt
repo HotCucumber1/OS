@@ -1,7 +1,8 @@
 find_package(Boost REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
-add_executable(BPlusTree BPlusTree.cpp main.cpp)
+add_executable(BPlusTree BPlusTree.cpp main.cpp
+        ../../lw8/Calculator/main.cpp)
 add_executable(TestBPlusTree BPlusTree.cpp TreeTest.cpp)
 
 target_link_libraries(TestBPlusTree PRIVATE Catch2::Catch2WithMain)

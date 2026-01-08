@@ -31,3 +31,7 @@ add_subdirectory(lw5/VirtMemSim)
 add_subdirectory(lw6/BPlusTree)
 
 add_subdirectory(lw7/FIleFlashImage)
+
+add_subdirectory(lw8/Calculator)
+add_subdirectory(lw8/PaintOnline)
+add_subdirectory(lw8/WebSearch)
