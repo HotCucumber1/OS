@@ -12,6 +12,10 @@
 constexpr double NANO_IN_SECOND = 1000000000;
 
 std::vector<std::pair<uint64_t, double>> GetTopMapItems(const std::unordered_map<uint64_t, double>& inputMap, int top);
+std::vector<std::pair<uint64_t, double>> GetMapItemsRange(
+	const std::unordered_map<uint64_t, double>& inputMap,
+	size_t start,
+	size_t end);
 
 bool IsLatinChar(const char c)
 {
@@ -183,7 +187,6 @@ void MtSearch::AddFileToIndex(const std::string& filePath)
 
 	auto docId = m_docIndex.fetch_add(1, std::memory_order_relaxed); // TODO почему memory_order_relaxed
 	{
-		// TODO какое отношение порядка, и как операции связаны с
 		std::unique_lock lock(m_indexMutex);
 		m_files[docId] = filePath;
 	}
@@ -245,7 +248,10 @@ std::vector<MtSearch::WordData> MtSearch::GetWordsDataFromIndex(const std::vecto
 	return wordDataList;
 }
 
-std::vector<std::pair<uint64_t, double>> MtSearch::FindMostRelevantDocIds(const std::vector<std::string>& words)
+std::vector<std::pair<uint64_t, double>> MtSearch::FindMostRelevantDocIds(
+	const std::vector<std::string>& words,
+	const int from,
+	const int to)
 {
 	const auto wordDataList = GetWordsDataFromIndex(words);
 
@@ -268,7 +274,7 @@ std::vector<std::pair<uint64_t, double>> MtSearch::FindMostRelevantDocIds(const 
 	}
 	threadPool.join();
 
-	return GetTopMapItems(fileRelevant, 10);
+	return GetMapItemsRange(fileRelevant, from, to);
 }
 
 std::vector<std::pair<uint64_t, double>> GetTopMapItems(
@@ -307,11 +313,11 @@ void MtSearch::PrintFilesRelevantInfo(const std::vector<std::pair<uint64_t, doub
 
 std::vector<FileInfoOutput> MtSearch::ListMostRelevantDocIds(
 	const std::vector<std::string>& words,
-	int from,
-	int to)
+	const int from,
+	const int to)
 {
 	std::vector<FileInfoOutput> result;
-	const auto docsInfo = FindMostRelevantDocIds(words);
+	const auto docsInfo = FindMostRelevantDocIds(words, from, to);
 
 	for (const auto& [docId, relevant] : docsInfo)
 	{
@@ -477,4 +483,35 @@ void MtSearch::MtProcessDirectory(
 		}
 	}
 	threadPool.join();
+}
+
+
+std::vector<std::pair<uint64_t, double>> GetMapItemsRange(
+	const std::unordered_map<uint64_t, double>& inputMap,
+	const size_t start,
+	const size_t end)
+{
+	if (start >= inputMap.size() || start >= end)
+	{
+		return {};
+	}
+
+	std::vector<std::pair<uint64_t, double>> pairs(inputMap.begin(), inputMap.end());
+
+	const size_t actualEnd = std::min(end, pairs.size());
+
+	auto cmp = [](const auto& a, const auto& b) {
+		return a.second > b.second;
+	};
+
+	std::ranges::nth_element(pairs, pairs.begin() + start, cmp);
+
+	std::partial_sort(pairs.begin() + start,
+		pairs.begin() + actualEnd,
+		pairs.end(),
+		cmp);
+
+	return std::vector(
+		pairs.begin() + start,
+		pairs.begin() + actualEnd);
 }

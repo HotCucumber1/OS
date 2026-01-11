@@ -34,9 +34,10 @@ public:
 	void Run();
 	void AddFileToIndex(const std::string& filePath);
 	void AddDirToIndex(const std::string& dirPath, bool recursively);
-	FileInfo FindMostRelevantDocIds(const std::vector<std::string>& words);
+	FileInfo FindMostRelevantDocIds(const std::vector<std::string>& words, int from = 0, int to = 10);
 
 	std::vector<FileInfoOutput> ListMostRelevantDocIds(const std::vector<std::string>& words, int from = 0, int to = 10);
+	// void AddPageToIndex(const std::string& pageUrl, const std::string& pageContent);
 
 private:
 	void ProcessLine(const std::string& line);

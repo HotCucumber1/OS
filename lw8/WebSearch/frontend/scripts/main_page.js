@@ -3,10 +3,9 @@ const searchButton = document.querySelector('button');
 
 function performSearch() {
     const query = searchInput.value.trim();
-    const formattedQuery = query.split(/\s+/).join('+');
 
     if (query) {
-        window.location.href = `results.html?words=${encodeURIComponent(formattedQuery)}`;
+        window.location.href = `results.html?words=${encodeURIComponent(query)}`;
     }
 }
 

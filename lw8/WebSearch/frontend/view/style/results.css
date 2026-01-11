@@ -96,6 +96,35 @@ header {
     margin: 0;
 }
 
+.pagination {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 40px 0;
+    font-family: Arial, sans-serif;
+}
+
+.pagination a {
+    text-decoration: none;
+    color: #1a0dab;
+    padding: 8px 12px;
+    border: 1px solid #dfe1e5;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.pagination a:hover {
+    background-color: #f8f9fa;
+    border-color: #dadce0;
+}
+
+.pagination a.active {
+    color: #202124;
+    font-weight: bold;
+    border-color: transparent;
+    pointer-events: none;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

@@ -1,5 +1,7 @@
 #pragma once
 #include "FileInfoOutput.h"
+#include "Handlers/NotFoundHandler.h"
+#include "Handlers/ProcessOptionsHandler.h"
 #include "JsonConverter.h"
 #include "MtSearch/MtSearch.h"
 
@@ -11,7 +13,7 @@
 namespace http = boost::beast::http;
 namespace json = boost::json;
 
-class RequestHandler
+class RequestHandler : public BaseHandler
 {
 public:
 	RequestHandler()
@@ -26,31 +28,67 @@ public:
 
 		if (request.method() == http::verb::options)
 		{
-			http::response<http::empty_body> res{http::status::ok, request.version()};
-			res.set(http::field::access_control_allow_origin, "*");
-			res.set(http::field::access_control_allow_methods, "GET, POST, OPTIONS");
-			res.set(http::field::access_control_allow_headers, "Content-Type, Authorization");
-			res.prepare_payload();
-			return res;
+			return ProcessOptionsHandler::Handle(request);
 		}
 
-		if (request.target().contains("/list"))
+		if (request.target().contains("/list") && request.method() == http::verb::get)
 		{
-			auto it = url->params().find("words");
-			const std::string wordsStr = (it != url->params().end())
-				? (*it).value
-				: "";
-
-			const auto words = SplitBySpaces(wordsStr);
-			auto filesData = m_search->ListMostRelevantDocIds(words);
-
-			return ListFileLinksResponse(filesData, request);
+			return ProcessListRequest(request);
 		}
 
-		return NotFound(request);
+		if (request.target().contains("/add") && request.method() == http::verb::post)
+		{
+			// return ProcessAddRequest(request);
+		}
+
+		return NotFoundHandler::Handle(request);
 	}
 
 private:
+	template <class Body, class Allocator>
+	http::message_generator ProcessListRequest(const http::request<Body, http::basic_fields<Allocator>>& request)
+	{
+		auto url = boost::urls::parse_origin_form(request.target());
+
+		auto it = url->params().find("words");
+		const std::string wordsStr = (it != url->params().end())
+			? (*it).value
+			: "";
+
+		auto fromIt = url->params().find("from");
+		int from = 0;
+
+		auto toIt = url->params().find("to");
+		int to = 10;
+
+		if (fromIt != url->params().end() && toIt != url->params().end())
+		{
+			try
+			{
+				from = std::stoi((*fromIt).value);
+				to = std::stoi((*toIt).value);
+			}
+			catch (const std::exception&)
+			{
+				return GetJsonResponse(
+					http::status::bad_request,
+					request.version(),
+					{ { "error", "Parameters 'from' and 'to' must be a number" } });
+			}
+		}
+
+		const auto words = SplitBySpaces(wordsStr);
+		auto filesData = m_search->ListMostRelevantDocIds(words, from, to);
+
+		return ListFileLinksResponse(filesData, request);
+	}
+
+	// template <class Body, class Allocator>
+	// http::message_generator ProcessAddRequest(const http::request<Body, http::basic_fields<Allocator>>& request)
+	// {
+	// 	auto data = json::parse(request.body());
+	// }
+
 	template <class Body, class Allocator>
 	http::message_generator ListFileLinksResponse(
 		const std::vector<FileInfoOutput>& filesInfo,
@@ -70,49 +108,6 @@ private:
 			http::status::ok,
 			request.version(),
 			{ { "data", std::move(fileLinks) } });
-	}
-
-	template <class Body, class Allocator>
-	static http::message_generator BadRequest(
-		const std::string& message,
-		const http::request<Body, http::basic_fields<Allocator>>& request)
-	{
-		return GetJsonResponse(
-			http::status::bad_request,
-			request.version(),
-			{
-				{ "error", "Bad request" },
-				{ "path", std::string(request.target()) },
-				{ "message", message },
-			});
-	}
-
-	template <class Body, class Allocator>
-	static http::message_generator NotFound(
-		const http::request<Body, http::basic_fields<Allocator>>& request)
-	{
-		return GetJsonResponse(
-			http::status::not_found,
-			request.version(),
-			{
-				{ "error", "Not Found" },
-				{ "path", std::string(request.target()) },
-			});
-	}
-
-	static http::message_generator GetJsonResponse(
-		const http::status& status,
-		const unsigned version,
-		const json::value& jsonValue)
-	{
-		http::response<http::string_body> res{ status, version };
-		res.set(http::field::content_type, "application/json");
-		res.set(http::field::access_control_allow_origin, "*");
-		res.set(http::field::access_control_allow_headers, "Content-Type, Authorization");
-		res.set(http::field::access_control_allow_methods, "GET, POST, OPTIONS");
-		res.body() = json::serialize(jsonValue);
-		res.prepare_payload();
-		return res;
 	}
 
 	static std::vector<std::string> SplitBySpaces(const std::string& str)
