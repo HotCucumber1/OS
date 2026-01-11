@@ -1,0 +1,134 @@
+:root {
+    --bg-color: #f9f9f9;
+    --card-bg: #ffffff;
+    --text-color: #202124;
+    --accent-color: #4285f4;
+    --accent-hover: #3367d6;
+    --border-color: #dfe1e5;
+    --success-color: #34a853;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+}
+
+nav {
+    width: 100%;
+    padding: 20px 40px;
+    box-sizing: border-box;
+}
+
+.logo {
+    font-size: 20px;
+    font-weight: bold;
+    text-decoration: none;
+    color: var(--text-color);
+}
+
+.logo span {
+    color: var(--accent-color);
+}
+
+.form-container {
+    background: var(--card-bg);
+    width: 100%;
+    max-width: 500px;
+    padding: 40px;
+    margin-top: 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border-color);
+}
+
+h2 {
+    margin-top: 0;
+    font-weight: 500;
+    font-size: 24px;
+    margin-bottom: 25px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #5f6368;
+}
+
+input[type="text"],
+#url,
+textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 15px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus, textarea:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+}
+
+textarea {
+    height: 120px;
+    resize: vertical;
+}
+
+.submit-btn {
+    width: 100%;
+    padding: 14px;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 10px;
+}
+
+.submit-btn:hover {
+    background-color: var(--accent-hover);
+}
+
+.submit-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+#message {
+    margin-top: 20px;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+    text-align: center;
+}
+
+.success {
+    background: #e6f4ea;
+    color: var(--success-color);
+    border: 1px solid #ceead6;
+}
+
+.error {
+    background: #fce8e6;
+    color: #d93025;
+    border: 1px solid #fad2cf;
+}

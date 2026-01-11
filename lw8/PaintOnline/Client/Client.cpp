@@ -6,7 +6,9 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/write.hpp>
 
-Client::Client(const std::string& host, const std::string& port)
+Client::Client(
+	const std::string& host,
+	const std::string& port)
 	: m_socket(m_ioContext)
 {
 	boost::asio::ip::tcp::resolver resolver(m_ioContext);
@@ -28,7 +30,7 @@ void Client::RunNetwork(const std::stop_token& st)
 	{
 		while (!st.stop_requested())
 		{
-			Segment data;
+			Segment data{};
 			boost::asio::read(
 				m_socket,
 				boost::asio::buffer(&data, sizeof(Segment)));
@@ -37,7 +39,7 @@ void Client::RunNetwork(const std::stop_token& st)
 			m_drawData.push_back(data);
 		}
 	}
-	catch (const std::exception& e)
+	catch (const std::exception&)
 	{
 	}
 }
