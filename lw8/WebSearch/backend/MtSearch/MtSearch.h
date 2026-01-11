@@ -1,11 +1,13 @@
 #pragma once
+#include "../FileInfoOutput.h"
+
 #include <atomic>
+#include <functional>
 #include <shared_mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <functional>
 
 class MtSearch
 {
@@ -33,6 +35,8 @@ public:
 	void AddFileToIndex(const std::string& filePath);
 	void AddDirToIndex(const std::string& dirPath, bool recursively);
 	FileInfo FindMostRelevantDocIds(const std::vector<std::string>& words);
+
+	std::vector<FileInfoOutput> ListMostRelevantDocIds(const std::vector<std::string>& words, int from = 0, int to = 10);
 
 private:
 	void ProcessLine(const std::string& line);

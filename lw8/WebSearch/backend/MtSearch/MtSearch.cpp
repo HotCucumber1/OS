@@ -1,5 +1,6 @@
 #include "MtSearch.h"
 
+#include <algorithm>
 #include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
 #include <cmath>
@@ -302,6 +303,29 @@ void MtSearch::PrintFilesRelevantInfo(const std::vector<std::pair<uint64_t, doub
 		m_output << n << ". " << "id: " << docId << ", relevance: " << relevant << ", path: " << fileUrl << std::endl;
 		n++;
 	}
+}
+
+std::vector<FileInfoOutput> MtSearch::ListMostRelevantDocIds(
+	const std::vector<std::string>& words,
+	int from,
+	int to)
+{
+	std::vector<FileInfoOutput> result;
+	const auto docsInfo = FindMostRelevantDocIds(words);
+
+	for (const auto& [docId, relevant] : docsInfo)
+	{
+		std::shared_lock lock(m_indexMutex);
+		const auto fileUrl = m_files[docId];
+		result.push_back({
+			docId,
+			relevant,
+			fileUrl,
+		});
+	}
+
+	std::ranges::reverse(result);
+	return result;
 }
 
 void MtSearch::PrintAllFiles()

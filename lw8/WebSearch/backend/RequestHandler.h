@@ -1,8 +1,11 @@
 #pragma once
+#include "FileInfoOutput.h"
+#include "JsonConverter.h"
 #include "MtSearch/MtSearch.h"
 
 #include <boost/beast/http.hpp>
 #include <boost/json.hpp>
+#include <boost/url/parse.hpp>
 #include <iostream>
 
 namespace http = boost::beast::http;
@@ -11,22 +14,62 @@ namespace json = boost::json;
 class RequestHandler
 {
 public:
+	RequestHandler()
+	{
+		m_search->AddDirToIndex("/home/dmitriy.rybakov/projects/crm/crm-app", true);
+	}
+
 	template <class Body, class Allocator>
 	http::message_generator Handle(http::request<Body, http::basic_fields<Allocator>>&& request)
 	{
-		if (request.target() == "/my-route")
+		auto url = boost::urls::parse_origin_form(request.target());
+
+		if (request.method() == http::verb::options)
 		{
-			const auto words = SplitBySpaces("TODO"); // TODO
-			auto data = GetFiles(words);
+			http::response<http::empty_body> res{http::status::ok, request.version()};
+			res.set(http::field::access_control_allow_origin, "*");
+			res.set(http::field::access_control_allow_methods, "GET, POST, OPTIONS");
+			res.set(http::field::access_control_allow_headers, "Content-Type, Authorization");
+			res.prepare_payload();
+			return res;
+		}
+
+		if (request.target().contains("/list"))
+		{
+			auto it = url->params().find("words");
+			const std::string wordsStr = (it != url->params().end())
+				? (*it).value
+				: "";
+
+			const auto words = SplitBySpaces(wordsStr);
+			auto filesData = m_search->ListMostRelevantDocIds(words);
+
+			return ListFileLinksResponse(filesData, request);
 		}
 
 		return NotFound(request);
 	}
 
 private:
-	std::vector<std::string> GetFiles(const std::vector<std::string>& words)
+	template <class Body, class Allocator>
+	http::message_generator ListFileLinksResponse(
+		const std::vector<FileInfoOutput>& filesInfo,
+		const http::request<Body, http::basic_fields<Allocator>>& request)
 	{
-		return {};
+		auto filesData = filesInfo;
+		std::ranges::sort(filesData, std::ranges::greater{}, &FileInfoOutput::relevant);
+
+		json::array fileLinks;
+		for (const auto& fileInfo : filesData)
+		{
+			const auto value = JsonConverter::ConvertFileInfoToJson(fileInfo);
+			fileLinks.push_back(value);
+		}
+
+		return GetJsonResponse(
+			http::status::ok,
+			request.version(),
+			{ { "data", std::move(fileLinks) } });
 	}
 
 	template <class Body, class Allocator>
@@ -64,6 +107,9 @@ private:
 	{
 		http::response<http::string_body> res{ status, version };
 		res.set(http::field::content_type, "application/json");
+		res.set(http::field::access_control_allow_origin, "*");
+		res.set(http::field::access_control_allow_headers, "Content-Type, Authorization");
+		res.set(http::field::access_control_allow_methods, "GET, POST, OPTIONS");
 		res.body() = json::serialize(jsonValue);
 		res.prepare_payload();
 		return res;

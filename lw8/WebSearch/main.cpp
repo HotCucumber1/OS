@@ -4,7 +4,7 @@
 #include <iostream>
 #include <memory>
 
-constexpr int THREADS = 16;
+constexpr int THREADS = 10;
 
 int main(const int argc, char* argv[])
 {
@@ -22,12 +22,12 @@ int main(const int argc, char* argv[])
 		const auto handler = std::make_shared<RequestHandler>();
 
 		boost::asio::io_context ioContext;
-		Listener listener(
+		const auto listener = std::make_shared<Listener>(
 			ioContext,
 			boost::asio::ip::tcp::endpoint{ address, port },
 			handler);
 
-		listener.Run();
+		listener->Run();
 
 		std::cout << "Server started on port " << port << std::endl;
 		ioContext.run();
