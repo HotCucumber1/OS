@@ -26,6 +26,13 @@ void Listener::Run()
 	Accept();
 }
 
+void Listener::Stop()
+{
+	m_ioContext.post([this]() {
+		m_acceptor.close();
+	});
+}
+
 void Listener::Accept()
 {
 	m_acceptor.async_accept(
@@ -37,9 +44,10 @@ void Listener::OnAccept(
 	const boost::beast::error_code& errorCode,
 	boost::asio::ip::tcp::socket socket)
 {
-	if (!errorCode)
+	if (errorCode)
 	{
-		std::make_shared<Session>(std::move(socket), std::move(m_handler))->Start();
+		return;
 	}
+	std::make_shared<Session>(std::move(socket), std::move(m_handler))->Start();
 	Accept();
 }

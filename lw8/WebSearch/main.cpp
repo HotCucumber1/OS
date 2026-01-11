@@ -1,10 +1,9 @@
 #include "backend/RequestHandler.h"
 #include "backend/Server/Listener.h"
 
+#include <boost/asio/signal_set.hpp>
 #include <iostream>
 #include <memory>
-
-constexpr int THREADS = 10;
 
 int main(const int argc, char* argv[])
 {
@@ -22,13 +21,19 @@ int main(const int argc, char* argv[])
 		const auto handler = std::make_shared<RequestHandler>();
 
 		boost::asio::io_context ioContext;
+
 		const auto listener = std::make_shared<Listener>(
 			ioContext,
 			boost::asio::ip::tcp::endpoint{ address, port },
 			handler);
 
-		listener->Run();
+		boost::asio::signal_set signals(ioContext, SIGINT, SIGTERM);
+		signals.async_wait([&](const boost::system::error_code& ec, int signal_number) {
+			std::cout << "\nStopping server..." << std::endl;
+			listener->Stop();
+		});
 
+		listener->Run();
 		std::cout << "Server started on port " << port << std::endl;
 		ioContext.run();
 	}
