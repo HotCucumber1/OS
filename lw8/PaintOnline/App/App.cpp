@@ -45,6 +45,7 @@ void App::Run()
 				if (m_isDrawing)
 				{
 					const sf::Vector2i endPos = sf::Mouse::getPosition(m_window);
+					// TODO синхройнный вызов (исправить) по умному
 					m_client.SendSegment(
 						m_lastMousePos.x,
 						m_lastMousePos.y,

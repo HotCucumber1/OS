@@ -17,6 +17,7 @@ public:
 	{
 		other.m_fd = -1;
 	}
+	// TODO = перемещающий
 
 	~SocketGuard()
 	{

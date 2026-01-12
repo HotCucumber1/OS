@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 constexpr int RECONNECT_ATTEMPT = 5;
+constexpr int TIMEOUT = 500000;
 
 int ConnectToServer(const std::string& host, int port);
 std::string TryGetResult(
@@ -53,7 +54,7 @@ std::string TryGetResult(
 			sock.Reset(ConnectToServer(host, port));
 			if (!sock.IsValid())
 			{
-				usleep(500000);
+				usleep(TIMEOUT);
 			}
 			continue;
 		}

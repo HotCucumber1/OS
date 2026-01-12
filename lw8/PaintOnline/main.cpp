@@ -38,8 +38,8 @@ int main(const int argc, char* argv[])
 void RunServer(const std::string& portStr)
 {
 	const int port = std::stoi(portStr);
-	boost::asio::io_context ioContext;
-	Server server(ioContext, port);
+	boost::asio::io_context ioContext; // TODO какой протокол
+	Server server(ioContext, port); // TODO чем отличается TCP от UDP
 
 	std::jthread serverNetThread([&ioContext]() {
 		ioContext.run();

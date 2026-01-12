@@ -12,8 +12,12 @@ const to = (currentPage * itemsPerPage) - 1;
 
 if (query) {
     searchInput.value = query;
-    fetchResults(query, from, to);
-    renderPagination(query, currentPage);
+    fetchResults(query, from, to)
+        .then((data) => {
+            if (data.ok) {
+                renderPagination(query, currentPage);
+            }
+        })
 } else {
     resultsContainer.innerHTML = "<p>Необходимо указать параметр `words`</p>";
 }
@@ -34,6 +38,8 @@ async function fetchResults(q, from, to) {
 
         const data = await response.json();
         renderResults(data.data);
+
+        return response;
     } catch (error) {
         resultsContainer.innerHTML = "<p>Ошибка при загрузке данных или бэкенд недоступен.</p>";
         console.error(error);

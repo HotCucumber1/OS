@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-#pragma pack(push, 1)
+#pragma pack(push, 1) // TODO подумать над порядком-байт (сетевой)
 struct Segment
 {
 	int x1;

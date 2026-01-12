@@ -18,7 +18,16 @@ Listener::Listener(
 	m_acceptor.open(endpoint.protocol(), errorCode);
 	m_acceptor.set_option(boost::asio::socket_base::reuse_address(true));
 	m_acceptor.bind(endpoint, errorCode);
+	if (errorCode)
+	{
+		throw std::runtime_error("Cannot bind to port: " + errorCode.message());
+	}
+
 	m_acceptor.listen(boost::asio::socket_base::max_connections, errorCode);
+	if (errorCode)
+	{
+		throw std::runtime_error("Cannot listen: " + errorCode.message());
+	}
 }
 
 void Listener::Run()

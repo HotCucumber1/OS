@@ -13,7 +13,7 @@ Session::Session(boost::asio::ip::tcp::socket socket, Room& room)
 
 void Session::Start()
 {
-	m_room.Join(shared_from_this());
+	m_room.Join(shared_from_this()); // TODO когда разрушается
 	Read();
 }
 

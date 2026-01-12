@@ -72,7 +72,9 @@ void Session::SendResponse(http::message_generator&& message)
 void Session::Close()
 {
 	boost::beast::error_code errorCode;
-	m_stream.socket().shutdown(
-		boost::asio::ip::tcp::socket::shutdown_send,
-		errorCode);
+	m_stream
+		.socket()
+		.shutdown(
+			boost::asio::ip::tcp::socket::shutdown_send,
+			errorCode);
 }
